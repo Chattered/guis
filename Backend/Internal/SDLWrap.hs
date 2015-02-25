@@ -1,8 +1,10 @@
-{-# LANGUAGE DeriveDataTypeable, FlexibleContexts, GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE TemplateHaskell, DeriveDataTypeable, FlexibleContexts
+    , GeneralizedNewtypeDeriving, FlexibleInstances, MultiParamTypeClasses #-}
 module Backend.Internal.SDLWrap where
 
 import           ToBeDeprecated
 
+import qualified Backend.Internal.SDL as SDL
 import           Control.Applicative hiding ((<$>))
 import           Control.Exception (catchJust,throwIO,fromException
                                    ,Exception,IOException,SomeException)
@@ -11,6 +13,7 @@ import           Control.Monad.Cont
 import           Control.Monad.Except
 import           Control.Monad.Reader
 import qualified Control.Monad.State as S
+import           Control.Exception
 import           Data.Maybe (isJust,fromJust)
 import           Data.Monoid
 import           Data.Typeable
@@ -21,32 +24,33 @@ import qualified Graphics.UI.SDL.Types as SDL
 import qualified Philed.Data.Nat as Nat
 import           Philed.Control.Monad.Record
 import qualified Philed.Data.Nat as N
-import qualified Backend.Internal.SDL as SDL
+import           Data.IORef
 
 data Image = Image (Nat.Nat Int) (C.Ptr SDL.Rect) deriving (Eq,Ord)
 newtype TextureCache = TextureCache { getTextures :: [SDL.Texture] } deriving Monoid
 
+data SDLState = SDLState { _renderer :: SDL.Renderer, _textureCache :: SDL.Renderer }
+makeLenses ''SDLState
+
 newtype SDL e m a =
-  SDL { unSDL :: RecordT TextureCache
-                   (ReaderT (String -> e)
-                    (S.StateT SDL.Renderer (ExceptT e m))) a }
-  deriving (Applicative,Functor,Monad,MonadIO,MonadReader (String -> e)
-           ,MonadRecord TextureCache,S.MonadState SDL.Renderer,MonadError e)
+  SDL { unSDL :: ReaderT (IORef (SDLState,TextureCache)) m a }
+  deriving (Applicative,Functor,Monad,MonadIO,MonadError e)
+
+instance MonadIO m => S.MonadState SDLState (SDL e m) where
+  get   = (^. _1) <$> (SDL ask >>= liftIO . readIORef)
+  put x = SDL ask >>= liftIO . (`modifyIORef` (_1 .~ x))
+
+instance MonadIO m => MonadRecord TextureCache (SDL e m) where
+  get      = (^. _2) <$> (SDL ask >>= liftIO . readIORef)
+  record x = SDL ask >>= liftIO . (`modifyIORef` (_2 %~ (`mappend` x)))
 
 instance MonadTrans (SDL e) where
-  lift = SDL . lift . lift . lift . lift
+ lift = SDL . lift
 
-newtype SDLError = SDLError { sdlErrMsg :: String }
-                 deriving (Show,Typeable)
-instance Exception SDLError where
-
-fromSDLError :: SomeException -> Maybe SDLError
-fromSDLError = fromException
-
-sdlTexture :: Monad m => Image -> SDL e m SDL.Texture
+sdlTexture :: MonadIO m => Image -> SDL e m SDL.Texture
 sdlTexture (Image index _) = fromJust <$> (`N.lookup` index) <$> getTextures <$> get
 
-textureDimensions :: (Monad m, MonadIO m, MonadError e m)
+textureDimensions :: (Monad m, MonadIO m, MonadError e m, SDL.FromSDLError e)
                      => SDL.Texture -> SDL e m (C.CInt, C.CInt)
 textureDimensions tex = sdlCont $ do
     -- Pointers to be filled by query
@@ -58,14 +62,15 @@ textureDimensions tex = sdlCont $ do
 
     liftA2 (,) (peek wPtr) (peek hPtr)
 
-imageDimensions :: (Monad m, MonadIO m, MonadError e m)
+imageDimensions :: (Monad m, MonadIO m, MonadError e m, SDL.FromSDLError e)
                    => Image -> SDL e m (C.CInt, C.CInt)
 imageDimensions img = sdlTexture img >>= textureDimensions
 
-loadImage :: (MonadError e m, MonadIO m, Monad m) => FilePath -> SDL e m Image
+loadImage :: (MonadError e m, MonadIO m, Monad m, SDL.FromSDLError e)
+             => FilePath -> SDL e m Image
 loadImage file = do
 
-  renderer <- S.get
+  renderer <- use renderer
   tex      <- SDL.loadTexture file renderer
 
   index    <- Nat.length <$> getTextures <$> get
@@ -78,12 +83,12 @@ loadImage file = do
   record (TextureCache [tex])
   return (Image index rect)
 
-renderImage :: (MonadError e m, MonadReader (String -> e) m, MonadIO m, Monad m)
+renderImage :: (Monad m, MonadIO m, MonadError e m, SDL.FromSDLError e)
                => Image -> C.CInt -> C.CInt -> SDL e m ()
 renderImage img@(Image _ rect) x y = do
   SDL.Rect _ _ w h <- peek rect
 
-  renderer <- S.get
+  renderer <- use renderer
   tex <- sdlTexture img
 
   sdlCont $ do
@@ -91,27 +96,45 @@ renderImage img@(Image _ rect) x y = do
     poke destRect (SDL.Rect x y w h)
     SDL.safeSDL_ (SDL.renderCopy renderer tex rect destRect)
 
-liftCont :: ContT r IO a -> ReaderT u (ExceptT e (ContT r IO)) a
-liftCont (ContT c) = ReaderT (\r -> ExceptT $ ContT $ (\k -> c (k . Right)))
+newtype SDLError = SDLError { sdlErrMsg :: String }
+                 deriving (Show,Typeable)
+instance Exception SDLError where
 
-liftError :: (Monad m, MonadError e m) => m (Either e a) -> SDL e m a
-liftError x = lift (x >>= either throwError return)
+fromSDLError :: SomeException -> Maybe SDLError
+fromSDLError = fromException
 
-peek :: MonadIO m => C.Ptr a -> m a
-peek = liftIO . peek
+newtype SDLCont r a =
+  SDLCont { unSDLCont :: ContT r IO a }
+  deriving (Functor, Applicative, Monad, MonadIO)
 
-poke :: MonadIO m => C.Ptr a -> a -> m (C.Ptr a)
-poke ptr = liftIO . poke ptr
+instance SDL.FromSDLError SDLError where
+  fromSDLError = SDLError
 
-malloc :: MonadIO m => m (C.Ptr a)
-malloc = liftIO malloc
+runSDLCont :: SDLCont r a -> (a -> IO r) -> IO r
+runSDLCont = runContT . unSDLCont
 
-alloca :: C.Storable a => ReaderT u (ExceptT e (ContT r IO)) (C.Ptr a)
-alloca = liftCont (ContT C.alloca)
+peek :: (MonadIO m, C.Storable a) => C.Ptr a -> m a
+peek = liftIO . C.peek
 
-sdlCont :: (Monad m, MonadError e m, MonadIO m)
-           => ReaderT (String -> e) (ExceptT e (ContT (Either e a) IO)) a
-           -> SDL e m a
-sdlCont x = ask >>= flip f x
-  where
-    f r = liftError . liftIO . flip runContT return . runExceptT . (`runReaderT` r)
+poke :: (MonadIO m, C.Storable a) => C.Ptr a -> a -> m ()
+poke ptr = liftIO . C.poke ptr
+
+malloc :: (MonadIO m, C.Storable a) => m (C.Ptr a)
+malloc = liftIO C.malloc
+
+alloca :: C.Storable a => SDLCont r (C.Ptr a)
+alloca = SDLCont $ ContT C.alloca
+
+instance MonadError SDLError (SDLCont r) where
+  throwError e = liftIO (throwIO e)
+  catchError (SDLCont c) handler =
+    SDLCont (ContT (\k -> catchJust fromSDLError (runContT c k)
+                          (\e -> runSDLCont (handler e) k )))
+
+sdlCont :: (Monad m, MonadError e m, MonadIO m, SDL.FromSDLError e)
+           => SDLCont a a -> SDL e m a
+sdlCont x = lift $ join $ liftIO $
+            catchJust fromSDLError sdl
+            (\sdlErr -> let errMsg = sdlErrMsg sdlErr
+                        in return (throwError (SDL.fromSDLError errMsg)))
+  where sdl = return <$> runSDLCont x return
