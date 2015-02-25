@@ -26,6 +26,8 @@ import           Philed.Control.Monad.Record
 import qualified Philed.Data.Nat as N
 import           Data.IORef
 
+-------------------------------------------------------------------------------------
+
 data Image = Image (Nat.Nat Int) (C.Ptr SDL.Rect) deriving (Eq,Ord)
 newtype TextureCache = TextureCache { getTextures :: [SDL.Texture] } deriving Monoid
 
@@ -47,8 +49,12 @@ instance MonadIO m => MonadRecord TextureCache (SDL e m) where
 instance MonadTrans (SDL e) where
  lift = SDL . lift
 
+-------------------------------------------------------------------------------------
+
 sdlTexture :: MonadIO m => Image -> SDL e m SDL.Texture
 sdlTexture (Image index _) = fromJust <$> (`N.lookup` index) <$> getTextures <$> get
+
+-------------------------------------------------------------------------------------
 
 textureDimensions :: (Monad m, MonadIO m, MonadError e m, SDL.FromSDLError e)
                      => SDL.Texture -> SDL e m (C.CInt, C.CInt)
@@ -95,6 +101,8 @@ renderImage img@(Image _ rect) x y = do
     destRect <- alloca
     poke destRect (SDL.Rect x y w h)
     SDL.safeSDL_ (SDL.renderCopy renderer tex rect destRect)
+
+-------------------------------------------------------------------------------------
 
 newtype SDLError = SDLError { sdlErrMsg :: String }
                  deriving (Show,Typeable)

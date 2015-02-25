@@ -19,6 +19,8 @@ import qualified Graphics.UI.SDL.Enum  as SDL
 import qualified Graphics.UI.SDL.Types as SDL
 import qualified Philed.Data.Nat       as N
 
+-------------------------------------------------------------------------------------
+
 class FromSDLError e where
   fromSDLError :: String -> e
 
@@ -43,6 +45,8 @@ safeSDL_ m = do
   result <- m
   if (result == 0) then return () else handleSDLError
 
+-------------------------------------------------------------------------------------
+
 createWindow :: (MonadIO m, MonadError e m, FromSDLError e) =>
                 N.Nat C.CInt -> N.Nat C.CInt -> N.Nat C.CInt -> N.Nat C.CInt
                 -> m (SDL.Window, SDL.Renderer)
@@ -55,6 +59,24 @@ createWindow x y w h = do
   renderer   <- safeSDL (SDL.getRenderer window)
   return (window,renderer)
 
+loadTexture :: (MonadError e m, MonadIO m, FromSDLError e) =>
+               FilePath -> SDL.Renderer -> m SDL.Texture
+loadTexture img renderer = do
+  jcImg   <- loadImg img
+  surface <- jcToSurface jcImg
+  tex     <- safeSDL (SDL.createTextureFromSurface renderer surface)
+  SDL.freeSurface surface
+  return tex
+
+-------------------------------------------------------------------------------------
+
+rgba8ToWord32 :: JC.PixelRGBA8 -> Word32
+rgba8ToWord32 (JC.PixelRGBA8 r g b a) =
+  (fromIntegral r `shiftL` 24)
+  .|. (fromIntegral b `shiftL` 16)
+  .|. (fromIntegral g `shiftL` 8)
+  .|. fromIntegral a
+
 loadImg :: (MonadIO m, MonadError e m, FromSDLError e) =>
            FilePath -> m (JC.Image JC.PixelRGBA8)
 loadImg path = do
@@ -63,13 +85,6 @@ loadImg path = do
    Right (JC.ImageRGBA8 img) -> return img
    Left str                  -> throwSDLError str
    _                         -> throwSDLError "Not an RGBA8 image"
-
-rgba8ToWord32 :: JC.PixelRGBA8 -> Word32
-rgba8ToWord32 (JC.PixelRGBA8 r g b a) =
-  (fromIntegral r `shiftL` 24)
-  .|. (fromIntegral b `shiftL` 16)
-  .|. (fromIntegral g `shiftL` 8)
-  .|. fromIntegral a
 
 jcToSurface :: (MonadIO m, MonadError e m, FromSDLError e) =>
                JC.Image JC.PixelRGBA8 -> m (C.Ptr SDL.Surface)
@@ -92,11 +107,4 @@ surfaceToTexture :: MonadIO m => SDL.Renderer -> C.Ptr SDL.Surface -> m SDL.Text
 surfaceToTexture renderer surface = do
   SDL.createTextureFromSurface renderer surface <* SDL.freeSurface surface
 
-loadTexture :: (MonadError e m, MonadIO m, FromSDLError e) =>
-               FilePath -> SDL.Renderer -> m SDL.Texture
-loadTexture img renderer = do
-  jcImg   <- loadImg img
-  surface <- jcToSurface jcImg
-  tex     <- safeSDL (SDL.createTextureFromSurface renderer surface)
-  SDL.freeSurface surface
-  return tex
+-------------------------------------------------------------------------------------
