@@ -43,30 +43,8 @@ instance Exception SDLError where
 fromSDLError :: SomeException -> Maybe SDLError
 fromSDLError = fromException
 
-peek :: MonadIO m => C.Ptr a -> m a
-peek = liftIO . peek
-
-poke :: MonadIO m => C.Ptr a -> a -> m (C.Ptr a)
-poke ptr = liftIO . poke ptr
-
-malloc :: MonadIO m => m (C.Ptr a)
-malloc = liftIO malloc
-
-liftCont :: ContT r IO a -> ReaderT u (ExceptT e (ContT r IO)) a
-liftCont (ContT c) = ReaderT (\r -> ExceptT $ ContT $ (\k -> c (k . Right)))
-
-alloca :: C.Storable a => ReaderT u (ExceptT e (ContT r IO)) (C.Ptr a)
-alloca = liftCont (ContT C.alloca)
-
-liftError :: (Monad m, MonadError e m) => m (Either e a) -> SDL e m a
-liftError x = lift (x >>= either throwError return)
-
-sdlCont :: (Monad m, MonadError e m, MonadIO m)
-           => ReaderT (String -> e) (ExceptT e (ContT (Either e a) IO)) a
-           -> SDL e m a
-sdlCont x = ask >>= flip f x
-  where
-    f r = liftError . liftIO . flip runContT return . runExceptT . (`runReaderT` r)
+sdlTexture :: Monad m => Image -> SDL e m SDL.Texture
+sdlTexture (Image index _) = fromJust <$> (`N.lookup` index) <$> getTextures <$> get
 
 textureDimensions :: (Monad m, MonadIO m, MonadError e m)
                      => SDL.Texture -> SDL e m (C.CInt, C.CInt)
@@ -79,6 +57,10 @@ textureDimensions tex = sdlCont $ do
      >>= SDL.safeSDL_
 
     liftA2 (,) (peek wPtr) (peek hPtr)
+
+imageDimensions :: (Monad m, MonadIO m, MonadError e m)
+                   => Image -> SDL e m (C.CInt, C.CInt)
+imageDimensions img = sdlTexture img >>= textureDimensions
 
 loadImage :: (MonadError e m, MonadIO m, Monad m) => FilePath -> SDL e m Image
 loadImage file = do
@@ -96,9 +78,6 @@ loadImage file = do
   record (TextureCache [tex])
   return (Image index rect)
 
-sdlTexture :: Monad m => Image -> SDL e m SDL.Texture
-sdlTexture (Image index _) = fromJust <$> (`N.lookup` index) <$> getTextures <$> get
-
 renderImage :: (MonadError e m, MonadReader (String -> e) m, MonadIO m, Monad m)
                => Image -> C.CInt -> C.CInt -> SDL e m ()
 renderImage img@(Image _ rect) x y = do
@@ -111,3 +90,28 @@ renderImage img@(Image _ rect) x y = do
     destRect <- alloca
     poke destRect (SDL.Rect x y w h)
     SDL.safeSDL_ (SDL.renderCopy renderer tex rect destRect)
+
+liftCont :: ContT r IO a -> ReaderT u (ExceptT e (ContT r IO)) a
+liftCont (ContT c) = ReaderT (\r -> ExceptT $ ContT $ (\k -> c (k . Right)))
+
+liftError :: (Monad m, MonadError e m) => m (Either e a) -> SDL e m a
+liftError x = lift (x >>= either throwError return)
+
+peek :: MonadIO m => C.Ptr a -> m a
+peek = liftIO . peek
+
+poke :: MonadIO m => C.Ptr a -> a -> m (C.Ptr a)
+poke ptr = liftIO . poke ptr
+
+malloc :: MonadIO m => m (C.Ptr a)
+malloc = liftIO malloc
+
+alloca :: C.Storable a => ReaderT u (ExceptT e (ContT r IO)) (C.Ptr a)
+alloca = liftCont (ContT C.alloca)
+
+sdlCont :: (Monad m, MonadError e m, MonadIO m)
+           => ReaderT (String -> e) (ExceptT e (ContT (Either e a) IO)) a
+           -> SDL e m a
+sdlCont x = ask >>= flip f x
+  where
+    f r = liftError . liftIO . flip runContT return . runExceptT . (`runReaderT` r)
