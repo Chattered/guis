@@ -1,6 +1,7 @@
 {-# LANGUAGE TemplateHaskell, DeriveDataTypeable, FlexibleContexts
     , GeneralizedNewtypeDeriving, FlexibleInstances, MultiParamTypeClasses #-}
-module Backend.Internal.SDLWrap where
+module Backend.Internal.SDLWrap (textureDimensions, loadImage, renderImage
+                                ,Image, imageDimensions, SDL, runSDL) where
 
 import           ToBeDeprecated
 
@@ -14,6 +15,7 @@ import           Control.Monad.Except
 import           Control.Monad.Reader
 import qualified Control.Monad.State as S
 import           Control.Exception
+import           Data.IORef
 import           Data.Maybe (isJust,fromJust)
 import           Data.Monoid
 import           Data.Typeable
@@ -21,22 +23,22 @@ import qualified Foreign as C
 import qualified Foreign.C.Types as C
 import qualified Graphics.UI.SDL.Video as SDL (queryTexture,renderCopy)
 import qualified Graphics.UI.SDL.Types as SDL
-import qualified Philed.Data.Nat as Nat
 import           Philed.Control.Monad.Record
-import qualified Philed.Data.Nat as N
-import           Data.IORef
+import qualified Philed.Data.NNeg as N
+import           Philed.Data.Rect
+import           Philed.Data.Vector
 
 -------------------------------------------------------------------------------------
 
-data Image = Image (Nat.Nat Int) (C.Ptr SDL.Rect) deriving (Eq,Ord)
+data Image = Image (N.NNeg Int) (C.Ptr SDL.Rect) deriving (Eq,Ord)
 newtype TextureCache = TextureCache { getTextures :: [SDL.Texture] } deriving Monoid
 
-data SDLState = SDLState { _renderer :: SDL.Renderer, _textureCache :: SDL.Renderer }
+data SDLState = SDLState { _renderer :: SDL.Renderer }
 makeLenses ''SDLState
 
 newtype SDL e m a =
   SDL { unSDL :: ReaderT (IORef (SDLState,TextureCache)) m a }
-  deriving (Applicative,Functor,Monad,MonadIO,MonadError e)
+  deriving (Applicative,Functor,Monad,MonadIO,MonadError e,MonadTrans)
 
 instance MonadIO m => S.MonadState SDLState (SDL e m) where
   get   = (^. _1) <$> (SDL ask >>= liftIO . readIORef)
@@ -46,15 +48,19 @@ instance MonadIO m => MonadRecord TextureCache (SDL e m) where
   get      = (^. _2) <$> (SDL ask >>= liftIO . readIORef)
   record x = SDL ask >>= liftIO . (`modifyIORef` (_2 %~ (`mappend` x)))
 
-instance MonadTrans (SDL e) where
- lift = SDL . lift
-
 -------------------------------------------------------------------------------------
 
 sdlTexture :: MonadIO m => Image -> SDL e m SDL.Texture
 sdlTexture (Image index _) = fromJust <$> (`N.lookup` index) <$> getTextures <$> get
 
 -------------------------------------------------------------------------------------
+
+runSDL :: (MonadIO m, MonadError e m, SDL.FromSDLError e) =>
+          Vec (N.NNeg C.CInt) -> N.NNeg C.CInt -> N.NNeg C.CInt -> SDL e m a -> m a
+runSDL bottomLeft w h sdl = do
+  (_, renderer) <- SDL.createWindow bottomLeft w h
+  ioRef <- liftIO $ newIORef (SDLState renderer, TextureCache [])
+  runReaderT (unSDL sdl) ioRef
 
 textureDimensions :: (Monad m, MonadIO m, MonadError e m, SDL.FromSDLError e)
                      => SDL.Texture -> SDL e m (C.CInt, C.CInt)
@@ -79,7 +85,7 @@ loadImage file = do
   renderer <- use renderer
   tex      <- SDL.loadTexture file renderer
 
-  index    <- Nat.length <$> getTextures <$> get
+  index    <- N.length <$> getTextures <$> get
 
   (w,h)    <- textureDimensions tex
 

@@ -21,13 +21,9 @@ executable linear
   -- other-extensions:    
   build-depends:       JuicyPixels
                      , base
-                     , bytestring
-                     , containers
                      , lens
-                     , mmorph
-                     , mtl
-                     , phil-lib
-                     , profunctors
+                     , mtl >= 2.2.1
+                     , phil-lib >= 0.0
                      , sdl2
                      , transformers
   -- hs-source-dirs:      

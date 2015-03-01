@@ -10,6 +10,9 @@ import           Control.Monad.Except
 import           Control.Monad.Error.Class
 import           Control.Monad.Reader
 import           Data.Bits
+import           Data.Picture
+import           Philed.Data.Rect
+import           Philed.Data.Vector
 import           Data.Word
 import qualified Foreign.C             as C
 import qualified Foreign               as C
@@ -17,7 +20,7 @@ import qualified Graphics.UI.SDL.Basic as SDL
 import qualified Graphics.UI.SDL.Video as SDL
 import qualified Graphics.UI.SDL.Enum  as SDL
 import qualified Graphics.UI.SDL.Types as SDL
-import qualified Philed.Data.Nat       as N
+import qualified Philed.Data.NNeg      as N
 
 -------------------------------------------------------------------------------------
 
@@ -48,16 +51,16 @@ safeSDL_ m = do
 -------------------------------------------------------------------------------------
 
 createWindow :: (MonadIO m, MonadError e m, FromSDLError e) =>
-                N.Nat C.CInt -> N.Nat C.CInt -> N.Nat C.CInt -> N.Nat C.CInt
+                Vec (N.NNeg C.CInt) -> N.NNeg C.CInt -> N.NNeg C.CInt
                 -> m (SDL.Window, SDL.Renderer)
-createWindow x y w h = do
+createWindow bottomLeft w h = do
   windowName <- liftIO . C.newCString $ ""
   window     <- SDL.createWindow windowName
-                (N.toIntegral x) (N.toIntegral y)
-                (N.toIntegral w) (N.toIntegral h)
+                (N.toNum x) (N.toNum y) (N.toNum w) (N.toNum h)
                 SDL.SDL_WINDOW_SHOWN
   renderer   <- safeSDL (SDL.getRenderer window)
   return (window,renderer)
+  where (x,y) = bottomLeft
 
 loadTexture :: (MonadError e m, MonadIO m, FromSDLError e) =>
                FilePath -> SDL.Renderer -> m SDL.Texture
