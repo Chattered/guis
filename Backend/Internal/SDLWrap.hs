@@ -24,6 +24,7 @@ import           Philed.Control.Monad.Record
 import qualified Philed.Data.NNeg as N
 import           Philed.Data.Rect
 import           Philed.Data.Vector
+import           System.IO.Error
 
 -------------------------------------------------------------------------------------
 
