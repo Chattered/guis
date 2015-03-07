@@ -5,6 +5,7 @@ import ToBeDeprecated
 
 import qualified Codec.Picture         as JC
 import qualified Codec.Picture.Types   as JC
+import           Control.Exception (IOException)
 import           Control.Monad.IO.Class
 import           Control.Monad.Except
 import           Control.Monad.Error.Class
@@ -21,11 +22,15 @@ import qualified Graphics.UI.SDL.Video as SDL
 import qualified Graphics.UI.SDL.Enum  as SDL
 import qualified Graphics.UI.SDL.Types as SDL
 import qualified Philed.Data.NNeg      as N
+import           System.IO.Error (userError)
 
 -------------------------------------------------------------------------------------
 
 class FromSDLError e where
   fromSDLError :: String -> e
+
+instance FromSDLError IOException where
+  fromSDLError = userError
 
 throwSDLError :: (MonadError e m, FromSDLError e) => String -> m a
 throwSDLError = throwError . fromSDLError
@@ -50,6 +55,9 @@ safeSDL_ m = do
 
 -------------------------------------------------------------------------------------
 
+init :: (MonadIO m, MonadError e m, FromSDLError e) => m ()
+init = safeSDL_ (SDL.init SDL.SDL_INIT_VIDEO)
+
 createWindow :: (MonadIO m, MonadError e m, FromSDLError e) =>
                 Vec (N.NNeg C.CInt) -> N.NNeg C.CInt -> N.NNeg C.CInt
                 -> m (SDL.Window, SDL.Renderer)
@@ -61,6 +69,9 @@ createWindow bottomLeft w h = do
   renderer   <- safeSDL (SDL.getRenderer window)
   return (window,renderer)
   where (x,y) = bottomLeft
+
+updateWindow :: (MonadIO m, MonadError e m, FromSDLError e) => SDL.Window -> m ()
+updateWindow = safeSDL_ . SDL.updateWindowSurface
 
 loadTexture :: (MonadError e m, MonadIO m, FromSDLError e) =>
                FilePath -> SDL.Renderer -> m SDL.Texture

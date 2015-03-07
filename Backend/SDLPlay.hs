@@ -1,4 +1,5 @@
-module Backend.SDLRenderer where
+{-# LANGUAGE RankNTypes #-}
+module Backend.SDLPlay where
 
 import ToBeDeprecated
 import Backend.SDLWrap
@@ -7,6 +8,7 @@ import Control.Concurrent (threadDelay)
 import Control.Monad (liftM)
 import Control.Monad.Error.Class
 import Control.Monad.IO.Class
+import Control.Monad.Trans (lift)
 import Data.Picture
 import qualified Foreign.C.Types as C
 import Philed.Control.Monad (loopM)
@@ -45,14 +47,14 @@ frameFreq = 1/60
 simulateFreq :: Double
 simulateFreq = 1/60
 
-playSDL :: (Monad m, MonadIO m, MonadError e m, FromSDLError e)
-           => Vec (NNeg C.CInt) -> NNeg C.CInt -> NNeg C.CInt
+playSDL :: (MonadError e m, FromSDLError f, MonadIO n, MonadError f n)
+           => (forall a. m a -> n a)
            -> world
            -> (world -> Picture Texture)
-           -> (Double -> Event -> world -> world)
-           -> m ()
-playSDL bottomLeft w h initWorld render step =
-  now >>= \startTime -> runSDL bottomLeft w h $ do
+           -> (Double -> Event -> world -> m world)
+           -> SDL f n ()
+playSDL nat initWorld render step =
+  now >>= \startTime -> do
 
     renderSDL (render initWorld)
 
@@ -66,11 +68,11 @@ playSDL bottomLeft w h initWorld render step =
       -- If necessary, wait until we're ready for the next simulation update
       waitTill (stepTime - simulateFreq)
 
-      let nextWorld = step simulateFreq NoEvent world
+      nextWorld <- lift (nat (step simulateFreq NoEvent world))
 
       -- Are we due to render a frame?
       if (stepTime >= frameFreq)
-        then renderSDL (render nextWorld)
+        then renderSDL (render nextWorld) >> update
         else return ()
 
       -- Loop

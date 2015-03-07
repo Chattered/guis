@@ -1,5 +1,5 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-module Backend.SDLWrap (textureDimensions, loadTexture, renderTexture
+module Backend.SDLWrap (textureDimensions, loadTexture, renderTexture, update
                        ,FromSDLError, Texture, SDL, runSDL) where
 
 import           ToBeDeprecated
@@ -18,7 +18,7 @@ newtype SDL e m a =
 
 newtype Texture = Texture { getTexture :: I.Image }
 
-textureDimensions :: (Monad m, MonadIO m, MonadError e m, FromSDLError e)
+textureDimensions :: (MonadIO m, MonadError e m, FromSDLError e)
                      => Texture -> SDL e m (C.CInt, C.CInt)
 textureDimensions = SDL . I.imageDimensions . getTexture
 
@@ -26,9 +26,12 @@ loadTexture :: (MonadError e m, MonadIO m, Monad m, FromSDLError e) =>
              FilePath -> SDL e m Texture
 loadTexture = SDL . (Texture <$>) . I.loadImage
 
-renderTexture :: (Monad m, MonadIO m, MonadError e m, FromSDLError e) =>
+renderTexture :: (MonadIO m, MonadError e m, FromSDLError e) =>
                  Texture -> C.CInt -> C.CInt -> SDL e m ()
 renderTexture tex x y = SDL (I.renderImage (getTexture tex) x y)
+
+update :: (MonadIO m, MonadError e m, FromSDLError e) => SDL e m ()
+update = SDL I.update
 
 runSDL :: (MonadIO m, MonadError e m, FromSDLError e) =>
           Vec (NNeg C.CInt) -> NNeg C.CInt -> NNeg C.CInt -> SDL e m a -> m a
