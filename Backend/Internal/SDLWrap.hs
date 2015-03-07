@@ -20,6 +20,7 @@ import qualified Foreign as C
 import qualified Foreign.C.Types as C
 import qualified Graphics.UI.SDL.Video as SDL (queryTexture,renderCopy)
 import qualified Graphics.UI.SDL.Types as SDL
+import           Philed.Control.MonadError
 import           Philed.Control.Monad.Record
 import qualified Philed.Data.NNeg as N
 import           Philed.Data.Rect
@@ -54,11 +55,11 @@ sdlTexture (Image index _) = fromJust <$> (`N.lookup` index) <$> getTextures <$>
 -------------------------------------------------------------------------------------
 
 runSDL :: (MonadIO m, MonadError e m, SDL.FromSDLError e) =>
-          Vec (N.NNeg C.CInt) -> N.NNeg C.CInt -> N.NNeg C.CInt -> SDL e m a -> m a
-runSDL bottomLeft w h sdl = do
+          Vec (N.NNeg C.CInt) -> N.NNeg C.CInt -> N.NNeg C.CInt -> SDL e m a -> m ()
+runSDL bottomLeft w h sdl = flip finally SDL.quit $ do
   (window, renderer) <- SDL.createWindow bottomLeft w h
   ioRef <- liftIO $ newIORef (SDLState renderer window, TextureCache [])
-  runReaderT (unSDL sdl) ioRef
+  flip finally (SDL.destroyWindow window) $ runReaderT (unSDL sdl) ioRef
 
 update :: (MonadIO m, MonadError e m, SDL.FromSDLError e) => SDL e m ()
 update = do

@@ -34,5 +34,5 @@ update :: (MonadIO m, MonadError e m, FromSDLError e) => SDL e m ()
 update = SDL I.update
 
 runSDL :: (MonadIO m, MonadError e m, FromSDLError e) =>
-          Vec (NNeg C.CInt) -> NNeg C.CInt -> NNeg C.CInt -> SDL e m a -> m a
+          Vec (NNeg C.CInt) -> NNeg C.CInt -> NNeg C.CInt -> SDL e m a -> m ()
 runSDL bottomLeft w h (SDL sdl) = I.runSDL bottomLeft w h sdl

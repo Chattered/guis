@@ -58,6 +58,9 @@ safeSDL_ m = do
 init :: (MonadIO m, MonadError e m, FromSDLError e) => m ()
 init = safeSDL_ (SDL.init SDL.SDL_INIT_VIDEO)
 
+quit :: (MonadIO m, MonadError e m, FromSDLError e) => m ()
+quit = SDL.quit
+
 createWindow :: (MonadIO m, MonadError e m, FromSDLError e) =>
                 Vec (N.NNeg C.CInt) -> N.NNeg C.CInt -> N.NNeg C.CInt
                 -> m (SDL.Window, SDL.Renderer)
@@ -69,6 +72,8 @@ createWindow bottomLeft w h = do
   renderer   <- safeSDL (SDL.getRenderer window)
   return (window,renderer)
   where (x,y) = bottomLeft
+
+destroyWindow w = SDL.destroyWindow w
 
 updateWindow :: (MonadIO m, MonadError e m, FromSDLError e) => SDL.Window -> m ()
 updateWindow = safeSDL_ . SDL.updateWindowSurface
