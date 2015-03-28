@@ -19,11 +19,10 @@ executable linear
   main-is:             Main.hs
   -- other-modules:       
   -- other-extensions:    
-  build-depends:       JuicyPixels
-                     , base
+  build-depends:       base
                      , lens
                      , mtl >= 2.2.1
-                     , phil-lib >= 0.0
+                     , phil-lib >= 0.1
                      , sdl2
                      , transformers
   -- hs-source-dirs:      

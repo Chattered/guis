@@ -1,6 +1,6 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Backend.SDLWrap (textureDimensions, loadTexture, renderTexture, update
-                       ,FromSDLError, Texture, SDL, runSDL) where
+                       ,FromSDLError, Texture, SDL, runSDL, clear) where
 
 import           ToBeDeprecated
 import           Backend.Internal.SDL     (FromSDLError)
@@ -32,6 +32,9 @@ renderTexture tex x y = SDL (I.renderImage (getTexture tex) x y)
 
 update :: (MonadIO m, MonadError e m, FromSDLError e) => SDL e m ()
 update = SDL I.update
+
+clear :: (MonadIO m, MonadError e m, FromSDLError e) => SDL e m ()
+clear = SDL I.clear
 
 runSDL :: (MonadIO m, MonadError e m, FromSDLError e) =>
           Vec (NNeg C.CInt) -> NNeg C.CInt -> NNeg C.CInt -> SDL e m a -> m ()

@@ -1,7 +1,7 @@
 {-# LANGUAGE TemplateHaskell, DeriveDataTypeable, FlexibleContexts
     , GeneralizedNewtypeDeriving, FlexibleInstances, MultiParamTypeClasses #-}
 module Backend.Internal.SDLWrap (textureDimensions, loadImage, renderImage, update
-                                ,Image, imageDimensions, SDL, runSDL) where
+                                ,Image, imageDimensions, SDL, runSDL, clear) where
 
 import           ToBeDeprecated
 
@@ -20,12 +20,14 @@ import qualified Foreign as C
 import qualified Foreign.C.Types as C
 import qualified Graphics.UI.SDL.Video as SDL (queryTexture,renderCopy)
 import qualified Graphics.UI.SDL.Types as SDL
-import           Philed.Control.MonadError
+import           Philed.Control.Monad.Error
 import           Philed.Control.Monad.Record
 import qualified Philed.Data.NNeg as N
 import           Philed.Data.Rect
 import           Philed.Data.Vector
 import           System.IO.Error
+
+import qualified Graphics.UI.SDL.Video as Jam
 
 -------------------------------------------------------------------------------------
 
@@ -62,9 +64,10 @@ runSDL bottomLeft w h sdl = flip finally SDL.quit $ do
   flip finally (SDL.destroyWindow window) $ runReaderT (unSDL sdl) ioRef
 
 update :: (MonadIO m, MonadError e m, SDL.FromSDLError e) => SDL e m ()
-update = do
-  window <- use window
-  SDL.updateWindow window
+update = SDL.update =<< use renderer
+
+clear :: (MonadIO m, MonadError e m, SDL.FromSDLError e) => SDL e m ()
+clear = SDL.clear =<< use renderer
 
 textureDimensions :: (Monad m, MonadIO m, MonadError e m, SDL.FromSDLError e)
                      => SDL.Texture -> SDL e m (C.CInt, C.CInt)
@@ -87,7 +90,8 @@ loadImage :: (MonadError e m, MonadIO m, Monad m, SDL.FromSDLError e)
 loadImage file = do
 
   renderer <- use renderer
-  tex      <- SDL.loadTexture file renderer
+
+  tex      <- SDL.loadTexture renderer file
 
   index    <- N.length <$> getTextures <$> get
 
