@@ -1,6 +1,6 @@
 {-# LANGUAGE DeriveFunctor, GeneralizedNewtypeDeriving #-}
 module Remote.Pipes (Command, clear, loadTexture, newImage, render, update
-                    ,server, runClient) where
+                    ,server, client) where
 
 import qualified Data.Binary as B
 import qualified Backend.SDLWrap as SDL
