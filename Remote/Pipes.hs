@@ -107,8 +107,8 @@ runCmds = do
 
 -------------------------------------------------------------------------------------
 
-runClient :: (Binary img, Binary tex, MonadThrow m) =>
-             Command tex img m () -> Pipe ByteString ByteString m ()
+runClient :: MonadThrow m =>
+             Command SDL.Image SDL.Texture m () -> Pipe ByteString ByteString m ()
 runClient (Command p) = decodes >-> p >-> encodes
 
 server :: (MonadThrow m, MonadIO m, MonadError e m, SDL.FromSDLError e) =>
