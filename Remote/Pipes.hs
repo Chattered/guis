@@ -1,6 +1,8 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-module Remote.Pipes where
+{-# LANGUAGE DeriveFunctor, GeneralizedNewtypeDeriving #-}
+module Remote.Pipes (Command, clear, loadTexture, newImage, render, update
+                    ,server, runClient) where
 
+import qualified Data.Binary as B
 import qualified Backend.SDLWrap as SDL
 import Control.Monad.Catch
 import Control.Monad.Except
@@ -14,7 +16,47 @@ import Pipes.Binary
 import Pipes.ByteString
 import Pipes.Core
 import Pipes.Safe
-import Remote.Command
+
+data Cmd img tex = Clear
+                 | LoadTexture String
+                 | NewImage tex (Rect Word)
+                 | Render (Picture img)
+                 | Update
+                 deriving Functor
+
+-------------------------------------------------------------------------------------
+
+instance (Binary img, Binary tex) => Binary (Cmd img tex) where
+  put Clear               = B.put (0::Word8)
+  put (LoadTexture path)  = B.put (1::Word8) >> B.put path
+  put (NewImage tex rect) = B.put (2::Word8) >> B.put tex >> B.put rect
+  put (Render pic)        = B.put (3::Word8) >> B.put pic
+  put Update              = B.put (4::Word8)
+  get = do
+    discriminator <- B.get :: B.Get Word8
+    case discriminator of
+     0 -> return Clear
+     1 -> LoadTexture <$> B.get
+     2 -> NewImage <$> B.get <*> B.get
+     3 -> Render <$> B.get
+     4 -> return Update
+
+data Response img tex = None
+                      | Img img
+                      | Tex tex
+
+instance (Binary img, Binary tex) => Binary (Response img tex) where
+  put None      = B.put (0::Word8)
+  put (Tex tex) = B.put (1::Word8) >> B.put tex
+  put (Img img) = B.put (2::Word8) >> B.put img
+  get = do
+    discriminator <- (B.get::B.Get Word8)
+    case discriminator of
+     0 -> return None
+     1 -> Tex <$> B.get
+     2 -> Img <$> B.get
+
+-------------------------------------------------------------------------------------
 
 newtype Command img tex m a = Command (Pipe (Response img tex) (Cmd img tex) m a)
                             deriving (Functor, Applicative, Monad, MonadThrow,
@@ -66,10 +108,8 @@ runCmds = do
 -------------------------------------------------------------------------------------
 
 runClient :: (Binary img, Binary tex, MonadThrow m) =>
-             Producer ByteString m () -> Consumer ByteString m ()
-             -> Command tex img m () -> m ()
-runClient source sink (Command p) =
-  runEffect $ source >-> decodes >-> p >-> encodes >-> sink
+             Command tex img m () -> Pipe ByteString ByteString m ()
+runClient (Command p) = decodes >-> p >-> encodes
 
 server :: (MonadThrow m, MonadIO m, MonadError e m, SDL.FromSDLError e) =>
           Pipe ByteString ByteString (SDL.SDL e m) ()
