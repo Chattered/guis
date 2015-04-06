@@ -30,6 +30,7 @@ import           Philed.Control.Monad.Record
 import qualified Philed.Data.NNeg as N
 import           Philed.Data.Rect
 import           Philed.Data.Vector
+import qualified Pipes.Safe as PS
 import           System.IO.Error
 
 import qualified Graphics.UI.SDL.Video as Jam
@@ -63,7 +64,8 @@ makeLenses ''SDLState
 
 newtype SDL e m a =
   SDL { unSDL :: ReaderT (IORef (SDLState,Cache)) m a }
-  deriving (Applicative,Functor,Monad,MonadError e,MonadIO,MonadTrans)
+  deriving (Applicative,Functor,Monad,MonadCatch,MonadMask,MonadThrow,
+            MonadError e,MonadIO,MonadTrans)
 
 instance MonadIO m => S.MonadState SDLState (SDL e m) where
   get   = (^. _1) <$> (SDL ask >>= liftIO . readIORef)

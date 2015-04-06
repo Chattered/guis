@@ -7,6 +7,7 @@ module Backend.SDLWrap (FromSDLError, Texture, Image, SDL
 import           Backend.Internal.SDL     (FromSDLError)
 import qualified Backend.Internal.SDLWrap as I
 import           Control.Applicative hiding ((<$>))
+import           Control.Monad.Catch
 import           Control.Monad.Except
 import           Control.Monad.Reader
 import           Data.Binary
@@ -18,7 +19,8 @@ import           Philed.Data.Vector
 
 newtype SDL e m a =
   SDL { unSDL :: I.SDL e m a }
-  deriving (Applicative,Functor,Monad,MonadIO,MonadError e,MonadTrans)
+  deriving (Applicative,Functor,Monad,MonadCatch,MonadMask,MonadThrow
+           ,MonadIO,MonadError e,MonadTrans)
 
 newtype Texture = Texture { getTexture :: I.Texture } deriving Binary
 newtype Image   = Img     { getImage   :: I.Image } deriving Binary
