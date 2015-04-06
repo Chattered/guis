@@ -116,16 +116,21 @@ texDimensions tex = sdlCont $ do
 loadTexture :: (MonadError e m, MonadIO m, SDL.FromSDLError e)
                => FilePath -> SDL e m Texture
 loadTexture file = do
-  renderer <- use renderer
+  renderer  <- use renderer
 
-  tex      <- SDL.loadTexture renderer file
+  preloaded <- M.lookup file <$> acquire knownTextures
 
-  index    <- genericLength <$> acquire getTextures
+  case preloaded of
+   Just tex -> return tex
+   Nothing  -> do
+     tex       <- SDL.loadTexture renderer file
 
-  (w,h)    <- texDimensions tex
+     index     <- genericLength <$> acquire getTextures
 
-  record $ Cache [TextureSpec tex (fromIntegral w) (fromIntegral h)] mempty mempty
-  return (Texture index)
+     (w,h)     <- texDimensions tex
+
+     record $ Cache [TextureSpec tex (fromIntegral w) (fromIntegral h)] mempty mempty
+     return (Texture index)
 
 textureDimensions :: MonadIO m => Texture -> SDL e m (Word, Word)
 textureDimensions tex = do
