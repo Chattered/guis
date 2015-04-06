@@ -1,19 +1,24 @@
-{-# LANGUAGE TemplateHaskell, DeriveDataTypeable, FlexibleContexts
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TemplateHaskell, DeriveDataTypeable, FlexibleContexts, RankNTypes
     , GeneralizedNewtypeDeriving, FlexibleInstances, MultiParamTypeClasses #-}
-module Backend.Internal.SDLWrap (textureDimensions, loadImage, renderImage, update
-                                ,Image, imageDimensions, SDL, runSDL, clear) where
-
-import           ToBeDeprecated
+module Backend.Internal.SDLWrap (textureDimensions, loadTexture
+                                ,newImage, renderImage
+                                ,update
+                                ,Texture, Image, SDL, runSDL, clear) where
 
 import qualified Backend.Internal.SDL as SDL
 import           Control.Applicative hiding ((<$>))
 import           Control.Exception (IOException)
 import           Control.Lens
+import           Control.Monad.Catch hiding (catchIOError,finally)
 import           Control.Monad.Cont
 import           Control.Monad.Except
 import           Control.Monad.Reader
 import qualified Control.Monad.State as S
+import qualified Data.Binary as B
 import           Data.IORef
+import           Data.List (genericIndex, genericLength)
+import qualified Data.Map as M
 import           Data.Maybe (isJust,fromJust)
 import           Data.Monoid
 import qualified Foreign as C
@@ -31,36 +36,61 @@ import qualified Graphics.UI.SDL.Video as Jam
 
 -------------------------------------------------------------------------------------
 
-data Image = Image (N.NNeg Int) (C.Ptr SDL.Rect) deriving (Eq,Ord)
-newtype TextureCache = TextureCache { getTextures :: [SDL.Texture] } deriving Monoid
+data ImageSpec = ImageSpec { _imgTexture :: Texture
+                           , _srcRect  :: C.Ptr SDL.Rect
+                           } deriving Eq
+data TextureSpec = TextureSpec { _texture :: SDL.Texture
+                               , _textureWidth  :: Word
+                               , _textureHeight :: Word
+                               }
+newtype Image   = Image (N.NNeg Integer) deriving B.Binary
+newtype Texture = Texture Word deriving (B.Binary, Eq)
+data Cache = Cache { _getTextures   :: [TextureSpec]
+                   , _getImages     :: [ImageSpec]
+                   , _knownTextures :: M.Map FilePath Texture
+                   }
+makeLenses ''ImageSpec
+makeLenses ''TextureSpec
+makeLenses ''Cache
+
+instance Monoid Cache where
+  mempty  = Cache mempty mempty mempty
+  mappend (Cache texs imgs m) (Cache texs' imgs' m') =
+    Cache (texs `mappend` texs') (imgs `mappend` imgs') (m `mappend` m')
 
 data SDLState = SDLState { _renderer :: SDL.Renderer, _window :: SDL.Window }
 makeLenses ''SDLState
 
 newtype SDL e m a =
-  SDL { unSDL :: ReaderT (IORef (SDLState,TextureCache)) m a }
-  deriving (Applicative,Functor,Monad,MonadIO,MonadError e,MonadTrans)
+  SDL { unSDL :: ReaderT (IORef (SDLState,Cache)) m a }
+  deriving (Applicative,Functor,Monad,MonadError e,MonadIO,MonadTrans)
 
 instance MonadIO m => S.MonadState SDLState (SDL e m) where
   get   = (^. _1) <$> (SDL ask >>= liftIO . readIORef)
   put x = SDL ask >>= liftIO . (`modifyIORef` (_1 .~ x))
 
-instance MonadIO m => MonadRecord TextureCache (SDL e m) where
+instance MonadIO m => MonadRecord Cache (SDL e m) where
   get      = (^. _2) <$> (SDL ask >>= liftIO . readIORef)
   record x = SDL ask >>= liftIO . (`modifyIORef` (_2 %~ (`mappend` x)))
 
 -------------------------------------------------------------------------------------
 
-sdlTexture :: MonadIO m => Image -> SDL e m SDL.Texture
-sdlTexture (Image index _) = fromJust <$> (`N.lookup` index) <$> getTextures <$> get
+acquire :: MonadRecord s m => Getter s a -> m a
+acquire l = (^. l) <$> get
+
+textureSpec :: MonadIO m => Texture -> SDL e m TextureSpec
+textureSpec (Texture index) = (`genericIndex` index) <$> acquire getTextures
+
+imageSpec :: MonadIO m => Image -> SDL e m ImageSpec
+imageSpec (Image index) = fromJust . (`N.lookup` index) <$> acquire getImages
 
 -------------------------------------------------------------------------------------
 
 runSDL :: (MonadIO m, MonadError e m, SDL.FromSDLError e) =>
-          Vec (N.NNeg C.CInt) -> N.NNeg C.CInt -> N.NNeg C.CInt -> SDL e m a -> m ()
+          Vec Word -> Word -> Word -> SDL e m a -> m ()
 runSDL bottomLeft w h sdl = flip finally SDL.quit $ do
-  (window, renderer) <- SDL.createWindow bottomLeft w h
-  ioRef <- liftIO $ newIORef (SDLState renderer window, TextureCache [])
+  (window, renderer) <- SDL.createWindow bottomLeft (fromIntegral w) (fromIntegral h)
+  ioRef <- liftIO $ newIORef (SDLState renderer window, mempty)
   flip finally (SDL.destroyWindow window) $ runReaderT (unSDL sdl) ioRef
 
 update :: (MonadIO m, MonadError e m, SDL.FromSDLError e) => SDL e m ()
@@ -69,9 +99,9 @@ update = SDL.update =<< use renderer
 clear :: (MonadIO m, MonadError e m, SDL.FromSDLError e) => SDL e m ()
 clear = SDL.clear =<< use renderer
 
-textureDimensions :: (Monad m, MonadIO m, MonadError e m, SDL.FromSDLError e)
-                     => SDL.Texture -> SDL e m (C.CInt, C.CInt)
-textureDimensions tex = sdlCont $ do
+texDimensions :: (MonadIO m, MonadError e m, SDL.FromSDLError e)
+                 => SDL.Texture -> SDL e m (C.CInt, C.CInt)
+texDimensions tex = sdlCont $ do
     -- Pointers to be filled by query
     (wPtr,hPtr) <- liftA2 (,) alloca alloca
 
@@ -81,40 +111,57 @@ textureDimensions tex = sdlCont $ do
 
     liftA2 (,) (peek wPtr) (peek hPtr)
 
-imageDimensions :: (Monad m, MonadIO m, MonadError e m, SDL.FromSDLError e)
-                   => Image -> SDL e m (C.CInt, C.CInt)
-imageDimensions img = sdlTexture img >>= textureDimensions
-
-loadImage :: (MonadError e m, MonadIO m, Monad m, SDL.FromSDLError e)
-             => FilePath -> SDL e m Image
-loadImage file = do
-
+loadTexture :: (MonadError e m, MonadIO m, SDL.FromSDLError e)
+               => FilePath -> SDL e m Texture
+loadTexture file = do
   renderer <- use renderer
 
   tex      <- SDL.loadTexture renderer file
 
-  index    <- N.length <$> getTextures <$> get
+  index    <- genericLength <$> acquire getTextures
 
-  (w,h)    <- textureDimensions tex
+  (w,h)    <- texDimensions tex
 
-  rect     <- malloc
-  poke rect (SDL.Rect 0 0 w h)
+  record $ Cache [TextureSpec tex (fromIntegral w) (fromIntegral h)] mempty mempty
+  return (Texture index)
 
-  record (TextureCache [tex])
-  return (Image index rect)
+textureDimensions :: MonadIO m => Texture -> SDL e m (Word, Word)
+textureDimensions tex = do
+  texSpec <- textureSpec tex
+  return (texSpec ^. textureWidth, texSpec ^. textureHeight)
+
+nFromIntegral :: Num a => N.NNeg Word -> a
+nFromIntegral = fromIntegral . N.extract
+
+newImage :: (MonadIO m, SDL.FromSDLError e)
+            => Texture -> Rect Word -> SDL e m Image
+newImage tex rect = do
+  srcRect <- malloc
+  let (x,y) = topLeft rect
+  poke srcRect $ SDL.Rect (fromIntegral x) (fromIntegral y)
+    (nFromIntegral . width $ rect) (nFromIntegral . height $ rect)
+
+  index <- N.length <$> acquire getImages
+
+  record $ Cache mempty [ImageSpec tex srcRect] mempty
+
+  return (Image index)
 
 renderImage :: (Monad m, MonadIO m, MonadError e m, SDL.FromSDLError e)
-               => Image -> C.CInt -> C.CInt -> SDL e m ()
-renderImage img@(Image _ rect) x y = do
+               => Image -> Word -> Word -> SDL e m ()
+renderImage img x y = do
+  imgSpec <- imageSpec img
+  texSpec <- textureSpec $ imgSpec ^. imgTexture
+  let rect =  imgSpec ^. srcRect
+
   SDL.Rect _ _ w h <- peek rect
 
   renderer <- use renderer
-  tex <- sdlTexture img
 
   sdlCont $ do
     destRect <- alloca
-    poke destRect (SDL.Rect x y w h)
-    SDL.safeSDL_ (SDL.renderCopy renderer tex rect destRect)
+    poke destRect (SDL.Rect (fromIntegral x) (fromIntegral y) w h)
+    SDL.safeSDL_ (SDL.renderCopy renderer (texSpec ^. texture) rect destRect)
 
 -------------------------------------------------------------------------------------
 

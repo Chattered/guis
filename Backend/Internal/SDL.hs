@@ -1,8 +1,6 @@
 {-# LANGUAGE FunctionalDependencies, MultiParamTypeClasses, FlexibleContexts #-}
 module Backend.Internal.SDL where
 
-import ToBeDeprecated
-
 import           Control.Exception (IOException)
 import           Control.Monad.IO.Class
 import           Control.Monad.Except
@@ -20,7 +18,6 @@ import qualified Graphics.UI.SDL.Enum       as SDL
 import qualified Graphics.UI.SDL.Filesystem as SDL
 import qualified Graphics.UI.SDL.Types      as SDL
 import qualified Graphics.UI.SDL.Video      as SDL
-import qualified Philed.Data.NNeg           as N
 import           System.IO.Error (userError)
 
 -------------------------------------------------------------------------------------
@@ -61,13 +58,12 @@ quit :: (MonadIO m, MonadError e m, FromSDLError e) => m ()
 quit = SDL.quit
 
 createWindow :: (MonadIO m, MonadError e m, FromSDLError e) =>
-                Vec (N.NNeg C.CInt) -> N.NNeg C.CInt -> N.NNeg C.CInt
-                -> m (SDL.Window, SDL.Renderer)
+                Vec (Word) -> Word -> Word -> m (SDL.Window, SDL.Renderer)
 createWindow bottomLeft w h = do
   windowName <- liftIO . C.newCString $ ""
   window     <- safeSDL $ SDL.createWindow windowName
                 SDL.SDL_WINDOWPOS_UNDEFINED SDL.SDL_WINDOWPOS_UNDEFINED
-                (N.toNum w) (N.toNum h)
+                (fromIntegral w) (fromIntegral h)
                 SDL.SDL_WINDOW_SHOWN
   renderer   <-
     safeSDL $ SDL.createRenderer window (-1) SDL.SDL_RENDERER_ACCELERATED

@@ -1,7 +1,6 @@
 {-# LANGUAGE RankNTypes #-}
 module Backend.SDLPlay where
 
-import ToBeDeprecated
 import Backend.SDLWrap
 import Control.Applicative hiding ((<$>))
 import Control.Concurrent (threadDelay)
@@ -18,15 +17,6 @@ import System.CPUTime (getCPUTime)
 
 void :: Monad m => m a -> m ()
 void x = liftM (const ()) x
-
-renderAt :: (Monad m, MonadIO m, MonadError e m, FromSDLError e)
-            => Picture Texture -> Double -> Double -> SDL e m ()
-renderAt (Image tex) x y = renderTexture tex (round x) (round y)
-renderAt (Translate (x',y') p) x y = renderAt p (x' + x) (y' + y)
-
-renderSDL :: (Monad m, MonadIO m, MonadError e m, FromSDLError e)
-          => Picture Texture -> SDL e m ()
-renderSDL pic = renderAt pic 0 0
 
 type Time    = Double
 data Event   = NoEvent
