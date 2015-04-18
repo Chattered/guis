@@ -41,20 +41,17 @@ instance (Binary img, Binary tex) => Binary (Cmd img tex) where
      3 -> Render <$> B.get
      4 -> return Update
 
-data Response img tex = None
-                      | Img img
+data Response img tex = Img img
                       | Tex tex
 
 instance (Binary img, Binary tex) => Binary (Response img tex) where
-  put None      = B.put (0::Word8)
-  put (Tex tex) = B.put (1::Word8) >> B.put tex
-  put (Img img) = B.put (2::Word8) >> B.put img
+  put (Tex tex) = B.put (0::Word8) >> B.put tex
+  put (Img img) = B.put (1::Word8) >> B.put img
   get = do
     discriminator <- (B.get::B.Get Word8)
     case discriminator of
-     0 -> return None
-     1 -> Tex <$> B.get
-     2 -> Img <$> B.get
+     0 -> Tex <$> B.get
+     1 -> Img <$> B.get
 
 -------------------------------------------------------------------------------------
 
@@ -62,14 +59,15 @@ newtype Command img tex m a = Command (Pipe (Response img tex) (Cmd img tex) m a
                             deriving (Functor, Applicative, Monad, MonadThrow,
                                       MonadCatch)
 
-clear :: Monad m => Command img tex m ()
+clear :: (MonadIO m, MonadThrow m) => Command img tex m ()
 clear = Command . yield $ Clear
 
-loadTexture :: MonadThrow m =>
+loadTexture :: (MonadThrow m, MonadIO m) =>
                FilePath -> Command img tex m tex
 loadTexture file = Command $ do
   yield (LoadTexture file)
   x <- await
+  liftIO . putStrLn $ "got a texture back"
   case x of
    Tex t -> return t
    _     -> throwM (userError "server should have returned a texture")
@@ -82,28 +80,33 @@ newImage texture rect = Command $ do
    Img img -> return img
    _       -> throwM (userError "server should have returned a image")
 
-render :: Monad m => Picture img -> Command img tex m ()
+render :: MonadThrow m => Picture img -> Command img tex m ()
 render picture = Command . yield $ Render picture
 
-update :: Monad m => Command img tex m ()
+update :: (MonadIO m, MonadThrow m) => Command img tex m ()
 update = Command . yield $ Update
 
 -------------------------------------------------------------------------------------
 
 runCmd :: (MonadIO m, MonadError e m, SDL.FromSDLError e) =>
-          Cmd SDL.Image SDL.Texture -> SDL.SDL e m (Response SDL.Image SDL.Texture)
-runCmd Clear                  = SDL.clear *> pure None
-runCmd (LoadTexture filePath) = Tex <$> SDL.loadTexture filePath
-runCmd (NewImage tex rect)    = Img <$> SDL.newImage tex rect
-runCmd (Render pic)           = SDL.renderSDL pic *> pure None
-runCmd (Update)               = SDL.update *> pure None
+          Cmd SDL.Image SDL.Texture
+          -> SDL.SDL e m (Maybe (Response SDL.Image SDL.Texture))
+runCmd Clear                  = SDL.clear *> pure Nothing
+runCmd (LoadTexture filePath) = Just . Tex <$> SDL.loadTexture filePath
+runCmd (NewImage tex rect)    = Just . Img <$> SDL.newImage tex rect
+runCmd (Render pic)           = SDL.renderSDL pic *> pure Nothing
+runCmd (Update)               = SDL.update *> pure Nothing
 
 runCmds :: (MonadError e m, MonadIO m, SDL.FromSDLError e)
            => Pipe (Cmd SDL.Image SDL.Texture) (Response SDL.Image SDL.Texture)
            (SDL.SDL e m) ()
 runCmds = do
-  cmd <- request ()
-  yield <=< lift . runCmd $ cmd
+  cmd  <- request ()
+  resp <- lift . runCmd $ cmd
+  case resp of
+   Nothing -> return ()
+   Just r  -> yield r
+  runCmds
 
 -------------------------------------------------------------------------------------
 
@@ -120,13 +123,17 @@ server = decodes >-> runCmds >-> encodes
 decodes :: (B.Binary a, MonadThrow m) => Pipe ByteString a m ()
 decodes = feedback decoder
   where decoder p = do
-          (x, leftover) <- lift . runStateT decode $ p
-          case x of
-           Right x  -> yield x >> decoder p
-           Left err -> throwM (userError . deMessage $ err)
+          (empty,p) <- lift . runStateT isEndOfBytes $ p
+          if empty then
+            return ()
+            else do
+            (x, leftover) <- lift . runStateT decode $ p
+            case x of
+             Right x  -> yield x >> decoder leftover
+             Left err -> throwM (userError . deMessage $ err)
 
-encodes :: (B.Binary a, Monad m) => Pipe a ByteString m ()
-encodes = await >>= encode
+encodes :: Monad m => B.Binary a => Pipe a ByteString m ()
+encodes = for cat encode
 
 feedback :: Monad m => (Producer a m () -> Producer b m ()) -> Pipe a b m ()
 feedback f = go

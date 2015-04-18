@@ -116,6 +116,8 @@ texDimensions tex = sdlCont $ do
 loadTexture :: (MonadError e m, MonadIO m, SDL.FromSDLError e)
                => FilePath -> SDL e m Texture
 loadTexture file = do
+  liftIO . putStrLn $ "loading"
+
   renderer  <- use renderer
 
   preloaded <- M.lookup file <$> acquire knownTextures
@@ -143,6 +145,8 @@ nFromIntegral = fromIntegral . N.extract
 newImage :: (MonadIO m, SDL.FromSDLError e)
             => Texture -> Rect Word -> SDL e m Image
 newImage tex rect = do
+  liftIO . putStrLn $ "create image"
+
   srcRect <- malloc
   let (x,y) = topLeft rect
   poke srcRect $ SDL.Rect (fromIntegral x) (fromIntegral y)
@@ -165,9 +169,16 @@ renderImage img x y = do
 
   renderer <- use renderer
 
+  peekedRect <- liftIO . peek $ rect
+  liftIO . putStrLn $ "rendering from"
+  liftIO . print $ peekedRect
+
   sdlCont $ do
     destRect <- alloca
     poke destRect (SDL.Rect (fromIntegral x) (fromIntegral y) w h)
+    peekedRect <- liftIO . peek $ destRect
+    liftIO . putStrLn $ "to"
+    liftIO . print $ peekedRect
     SDL.safeSDL_ (SDL.renderCopy renderer (texSpec ^. texture) rect destRect)
 
 -------------------------------------------------------------------------------------
