@@ -1,150 +1,181 @@
-{-# LANGUAGE DeriveFunctor, GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE DeriveFunctor, GeneralizedNewtypeDeriving, MultiParamTypeClasses #-}
 module Remote.Pipes (Command, clear, loadTexture, newImage, render, update
-                    ,server, client) where
+                    ,runServer, runClient, sdlClient, sdlServer) where
 
-import qualified Data.Binary as B
 import qualified Backend.SDLWrap as SDL
 import Control.Monad.Catch
 import Control.Monad.Except
+import qualified Control.Monad.Free as F
+import Control.Monad.Trans.Free
 import Control.Monad.State.Strict
 import Control.Monad.Trans
 import qualified Data.Binary as B
+import qualified Data.ByteString      as BS
+import qualified Data.ByteString.Lazy as BSL
+import Data.Functor.Identity
 import Data.Picture
 import Philed.Data.Rect
+import Philed.Control.Monad
 import Pipes
 import Pipes.Binary
 import Pipes.ByteString
 import Pipes.Core
 import Pipes.Safe
+import qualified System.IO as IO
 
-data Cmd img tex = Clear
-                 | LoadTexture String
-                 | NewImage tex (Rect Word)
-                 | Render (Picture img)
-                 | Update
-                 deriving Functor
+data Cmd tex img cmd = Clear cmd
+                     | LoadTexture FilePath (tex -> cmd)
+                     | NewImage tex (Rect Word) (img -> cmd)
+                     | Render (Picture img) cmd
+                     | Update cmd
+                     deriving Functor
+
+newtype Command tex img m a =
+  Command { runCommand :: FreeT (Cmd tex img) m a }
+  deriving (Applicative, Functor, Monad, MonadFree (Cmd tex img))
+
+clear :: Monad m => Command tex img m ()
+clear = liftF (Clear ())
+
+loadTexture :: Monad m => FilePath -> Command tex img m tex
+loadTexture file = join . liftF $ LoadTexture file return
+
+newImage :: Monad m => tex -> Rect Word -> Command tex img m img
+newImage tex rect = join . liftF $ NewImage tex rect return
+
+render :: Monad m => Picture img -> Command tex img m ()
+render pic = liftF (Render pic ())
+
+update :: Monad m => Command tex img m ()
+update = liftF (Update ())
+
+data Response tex img = Img img
+                      | Tex tex
+                      | Bye
+
+data C tex img = Clr | LoadTex FilePath | NewImg tex (Rect Word)
+               | Rnder (Picture img) | Upd
+
+data ResponseCmd tex img m =
+  ResponseCmd [C tex img] (Maybe (Response tex img -> m (ResponseCmd tex img m)))
+
+split :: Monad m => FreeT (Cmd tex img) m () -> m (ResponseCmd tex img m)
+split cmd = runFreeT cmd >>= s
+  where s (Pure ()) = return $ ResponseCmd [] Nothing
+        s (Free (Clear cmd)) = fmap f (split cmd)
+          where f (ResponseCmd init cs) = ResponseCmd (Clr : init) cs
+        s (Free (LoadTexture file cmd)) =
+          return $ ResponseCmd [LoadTex file] (Just f)
+          where f (Tex tex) = split (cmd tex)
+                f (Img img) = error "Expecting texture from server."
+        s (Free (NewImage tex rect cmd)) =
+          return $ ResponseCmd [NewImg tex rect] (Just f)
+          where f (Tex tex) = error "Expecting image from server."
+                f (Img img) = split (cmd img)
+        s (Free (Render pic cmd)) = fmap f (split cmd)
+          where f (ResponseCmd init cs) = ResponseCmd (Rnder pic : init) cs
+        s (Free (Update cmd)) = fmap f (split cmd)
+          where f (ResponseCmd init cs) = ResponseCmd (Upd : init) cs
 
 -------------------------------------------------------------------------------------
 
-instance (Binary img, Binary tex) => Binary (Cmd img tex) where
-  put Clear               = B.put (0::Word8)
-  put (LoadTexture path)  = B.put (1::Word8) >> B.put path
-  put (NewImage tex rect) = B.put (2::Word8) >> B.put tex >> B.put rect
-  put (Render pic)        = B.put (3::Word8) >> B.put pic
-  put Update              = B.put (4::Word8)
+instance (Binary tex, Binary img) => Binary (C tex img) where
+  put Clr               = B.put (0::Word8)
+  put (LoadTex path)    = B.put (1::Word8) >> B.put path
+  put (NewImg tex rect) = B.put (2::Word8) >> B.put tex >> B.put rect
+  put (Rnder pic)       = B.put (3::Word8) >> B.put pic
+  put Upd               = B.put (4::Word8)
   get = do
     discriminator <- B.get :: B.Get Word8
     case discriminator of
-     0 -> return Clear
-     1 -> LoadTexture <$> B.get
-     2 -> NewImage <$> B.get <*> B.get
-     3 -> Render <$> B.get
-     4 -> return Update
-
-data Response img tex = Img img
-                      | Tex tex
+     0 -> return Clr
+     1 -> LoadTex <$> B.get
+     2 -> NewImg  <$> B.get <*> B.get
+     3 -> Rnder   <$> B.get
+     4 -> return Upd
 
 instance (Binary img, Binary tex) => Binary (Response img tex) where
   put (Tex tex) = B.put (0::Word8) >> B.put tex
   put (Img img) = B.put (1::Word8) >> B.put img
+  put Bye       = B.put (2::Word8)
   get = do
     discriminator <- (B.get::B.Get Word8)
     case discriminator of
      0 -> Tex <$> B.get
      1 -> Img <$> B.get
+     2 -> return Bye
 
 -------------------------------------------------------------------------------------
 
-newtype Command img tex m a = Command (Pipe (Response img tex) (Cmd img tex) m a)
-                            deriving (Functor, Applicative, Monad, MonadThrow,
-                                      MonadCatch)
+sdlClient :: Monad m =>
+             Command tex img m ()
+             -> Client [C tex img] (Response tex img) m ()
+sdlClient = join . lift . fmap sdlClient' . split . runCommand
 
-clear :: (MonadIO m, MonadThrow m) => Command img tex m ()
-clear = Command . yield $ Clear
+sdlClient' :: Monad m =>
+              ResponseCmd tex img m -> Client [C tex img] (Response tex img) m ()
+sdlClient' (ResponseCmd inits Nothing) = do
+  resp <- request inits
+  case resp of
+   Bye -> return ()
+sdlClient' (ResponseCmd inits (Just cmd)) = do
+  resp <- request inits
+  lift (cmd resp) >>= sdlClient'
 
-loadTexture :: (MonadThrow m, MonadIO m) =>
-               FilePath -> Command img tex m tex
-loadTexture file = Command $ do
-  yield (LoadTexture file)
-  x <- await
-  liftIO . putStrLn $ "got a texture back"
-  case x of
-   Tex t -> return t
-   _     -> throwM (userError "server should have returned a texture")
-
-newImage :: MonadThrow m => tex -> Rect Word -> Command img tex m img
-newImage texture rect = Command $ do
-  yield (NewImage texture rect)
-  x <- await
-  case x of
-   Img img -> return img
-   _       -> throwM (userError "server should have returned a image")
-
-render :: MonadThrow m => Picture img -> Command img tex m ()
-render picture = Command . yield $ Render picture
-
-update :: (MonadIO m, MonadThrow m) => Command img tex m ()
-update = Command . yield $ Update
+sdlServer :: (Monad m, MonadIO m, MonadError e m, SDL.FromSDLError e) =>
+             [C SDL.Texture SDL.Image]
+             -> Server [C SDL.Texture SDL.Image] (Response SDL.Texture SDL.Image)
+                       (SDL.SDL e m) ()
+sdlServer cmds = runCmds cmds >>= go
+  where go Nothing     = return ()
+        go (Just resp) = go <=< runCmds <=< respond $ resp
+        runCmds []    = return Nothing
+        runCmds [cmd] = do
+          resp' <- lift . runCmd $ cmd
+          case resp' of
+           Nothing     -> return Nothing
+           Just resp'' -> return (Just resp'')
+        runCmds (cmd:cmds) = do
+          resp' <- lift . runCmd $ cmd
+          case resp' of
+           Nothing -> runCmds cmds
+           Just _  -> error "Not expecting a response."
 
 -------------------------------------------------------------------------------------
 
 runCmd :: (MonadIO m, MonadError e m, SDL.FromSDLError e) =>
-          Cmd SDL.Image SDL.Texture
-          -> SDL.SDL e m (Maybe (Response SDL.Image SDL.Texture))
-runCmd Clear                  = SDL.clear *> pure Nothing
-runCmd (LoadTexture filePath) = Just . Tex <$> SDL.loadTexture filePath
-runCmd (NewImage tex rect)    = Just . Img <$> SDL.newImage tex rect
-runCmd (Render pic)           = SDL.renderSDL pic *> pure Nothing
-runCmd (Update)               = SDL.update *> pure Nothing
-
-runCmds :: (MonadError e m, MonadIO m, SDL.FromSDLError e)
-           => Pipe (Cmd SDL.Image SDL.Texture) (Response SDL.Image SDL.Texture)
-           (SDL.SDL e m) ()
-runCmds = do
-  cmd  <- request ()
-  resp <- lift . runCmd $ cmd
-  case resp of
-   Nothing -> return ()
-   Just r  -> yield r
-  runCmds
+          C SDL.Texture SDL.Image
+          -> SDL.SDL e m (Maybe (Response SDL.Texture SDL.Image))
+runCmd Clr                = SDL.clear *> pure Nothing
+runCmd (LoadTex filePath) = Just . Tex <$> SDL.loadTexture filePath
+runCmd (NewImg tex rect)  = Just . Img <$> SDL.newImage tex rect
+runCmd (Rnder pic)        = SDL.renderSDL pic *> pure Nothing
+runCmd Upd                = SDL.update *> pure Nothing
 
 -------------------------------------------------------------------------------------
 
-client :: MonadThrow m =>
-             Command SDL.Image SDL.Texture m () -> Pipe ByteString ByteString m ()
-client (Command p) = decodes >-> p >-> encodes
+encodeStrict :: Binary a => a -> BS.ByteString
+encodeStrict x = BSL.toStrict (B.encode x)
 
-server :: (MonadThrow m, MonadIO m, MonadError e m, SDL.FromSDLError e) =>
-          Pipe ByteString ByteString (SDL.SDL e m) ()
-server = decodes >-> runCmds >-> encodes
+decodeStrict :: Binary a => BS.ByteString -> a
+decodeStrict bs = B.decode (BSL.fromStrict bs)
 
--------------------------------------------------------------------------------------
+readBS :: (Binary a, MonadIO m) => IO.Handle -> m a
+readBS hin = do
+  payload <- decodeStrict <$> liftIO (BS.hGet hin 4)
+  decodeStrict <$> liftIO (BS.hGet hin payload)
 
-decodes :: (B.Binary a, MonadThrow m) => Pipe ByteString a m ()
-decodes = feedback decoder
-  where decoder p = do
-          (empty,p) <- lift . runStateT isEndOfBytes $ p
-          if empty then
-            return ()
-            else do
-            (x, leftover) <- lift . runStateT decode $ p
-            case x of
-             Right x  -> yield x >> decoder leftover
-             Left err -> throwM (userError . deMessage $ err)
+runClient :: (Binary a, Binary b, MonadIO m) =>
+             IO.Handle -> IO.Handle -> Client a b m () -> Effect m ()
+runClient hin hout client = do
+  client //< \req -> do
+    let bs = encodeStrict req
+    liftIO (BS.hPut hout (encodeStrict (BS.length bs) `BS.append` bs))
+    liftIO (IO.hFlush hout)
+    readBS hin
 
-encodes :: Monad m => B.Binary a => Pipe a ByteString m ()
-encodes = for cat encode
-
-feedback :: Monad m => (Producer a m () -> Producer b m ()) -> Pipe a b m ()
-feedback f = go
-  where
-    go = do
-      x <- await
-      go2 (f $ yield x)
-    go2 p = do
-          y <- lift $ next p
-          case y of
-           Left ()             -> go
-           Right (z, leftOver) -> do
-             yield z
-             go2 leftOver
+runServer :: (Binary a, Binary b, MonadIO m) =>
+             IO.Handle -> IO.Handle -> (b -> Server a b m ()) -> Effect m ()
+runServer hout hin server = do
+  req <- readBS hin
+  runClient hout hin (reflect . server $ req)
