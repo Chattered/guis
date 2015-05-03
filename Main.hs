@@ -3,10 +3,11 @@
 module Main where
 
 import Backend.SDLWrap (runSDL, Image, Texture)
-import Control.Concurrent as Concurrent
+import qualified Control.Concurrent as Concurrent
 import Control.Lens
 import Control.Monad
 import Control.Monad.Except
+import Control.Monad.Morph
 import Control.Monad.State.Strict
 import Control.Monad.Trans
 import Data.Bits
@@ -31,37 +32,32 @@ withFile :: MonadSafe m => FilePath -> IOMode -> (Handle -> m r) -> m r
 withFile file ioMode =
   bracket (liftIO $ openFile file ioMode) (liftIO . hClose)
 
-runClient :: MonadSafe m => Command Image Texture m () -> m ()
-runClient cmd = do
-  withFile "/disk/scratch/remoteout" ReadMode $ \hin -> do
-    withFile "/disk/scratch/remotein" WriteMode $ \hout ->
-      runEffect $ fromHandle hin >-> client cmd >-> toHandle hout
+bracketHandle :: MonadSafe m => Handle -> m r -> m r
+bracketHandle h b = bracket (return ()) (const . liftIO $ hClose h) (const b)
+
+client :: MonadSafe m => Command Image Texture m () -> m ()
+client cmd = do
+  withFile "/disk/scratch/serverout" ReadMode $ \hin -> do
+    withFile "/disk/scratch/serverin" WriteMode $ \hout ->
+      runEffect $ runClient hin hout (sdlClient cmd)
 
 waitM :: MonadIO m => m Bool -> m ()
 waitM cond = do
   c <- cond
   if c then return () else
-    do liftIO . threadDelay $ 100000
+    do liftIO . Concurrent.threadDelay $ 100000
+       liftIO . putStrLn $ "waiting for an opening"
        liftIO $ Concurrent.yield
        waitM cond
 
 main :: IO ()
 main = do
-  createNamedPipe "/disk/scratch/remotein"  (3 `shiftL` 7)
-  createNamedPipe "/disk/scratch/remoteout" (3 `shiftL` 7)
+  createNamedPipe "/disk/scratch/serverin"  (3 `shiftL` 7)
+  createNamedPipe "/disk/scratch/serverout" (3 `shiftL` 7)
   runSDL (0,0) 200 200 . forever . h . runSafeT $ do
-    withFile "/disk/scratch/remotein" ReadMode $ \hin -> do
-      waitM (liftIO . hReady $ hin)
-      (withFile "/disk/scratch/remoteout" WriteMode $ \hout -> do
-          h . runEffect . hoist liftBase $
-            fromHandle hin >-> server >-> toHandle hout)
-        `catch` (\err -> do
-                  liftIO . print $ err
-                  if isDoesNotExistError err then
-                    do
-                      liftIO . putStrLn $ "discarding output"
-                      h . runEffect . hoist liftBase $
-                        fromHandle hin >-> server >-> drain
-                  else throwM err)
+    withFile "/disk/scratch/serverin" ReadMode $ \hin -> do
+      withFile "/disk/scratch/serverout" WriteMode $ \hout -> do
+        waitM (liftIO . hReady $ hin)
+        runEffect $ (hoist liftBase $ runServer hout hin sdlServer)
         where h x = x `catch` (\e -> do liftIO . print $ (e::SomeException)
                                         return ())

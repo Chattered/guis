@@ -26,6 +26,7 @@ executable linear
                      , exceptions
                      , free
                      , lens
+                     , mmorph
                      , mtl >= 2.2.1
                      , phil-lib >= 0.1
                      , pipes
