@@ -44,8 +44,8 @@ data TextureSpec = TextureSpec { _texture :: SDL.Texture
                                , _textureWidth  :: Word
                                , _textureHeight :: Word
                                }
-newtype Image   = Image (N.NNeg Integer) deriving B.Binary
-newtype Texture = Texture Word deriving (B.Binary, Eq)
+newtype Image   = Image (N.NNeg Integer) deriving (B.Binary, Show)
+newtype Texture = Texture Word deriving (B.Binary, Eq, Show)
 data Cache = Cache { _getTextures   :: [TextureSpec]
                    , _getImages     :: [ImageSpec]
                    , _knownTextures :: M.Map FilePath Texture

@@ -2,8 +2,8 @@
 module Remote.Pipes (Command, clear, loadTexture, newImage, render, update
                     ,runServer, runClient, sdlClient, sdlServer) where
 
+import qualified Control.Concurrent as Concurrent
 import qualified Backend.SDLWrap as SDL
-import Control.Monad.Catch
 import Control.Monad.Except
 import qualified Control.Monad.Free as F
 import Control.Monad.Trans.Free
@@ -14,6 +14,7 @@ import qualified Data.ByteString      as BS
 import qualified Data.ByteString.Lazy as BSL
 import Data.Functor.Identity
 import Data.Picture
+import Data.Word
 import Philed.Data.Rect
 import Philed.Control.Monad
 import Pipes
@@ -32,7 +33,8 @@ data Cmd tex img cmd = Clear cmd
 
 newtype Command tex img m a =
   Command { runCommand :: FreeT (Cmd tex img) m a }
-  deriving (Applicative, Functor, Monad, MonadFree (Cmd tex img))
+  deriving (Applicative, Functor, Monad, MonadFree (Cmd tex img), MonadTrans
+           ,MonadIO)
 
 clear :: Monad m => Command tex img m ()
 clear = liftF (Clear ())
@@ -52,9 +54,11 @@ update = liftF (Update ())
 data Response tex img = Img img
                       | Tex tex
                       | Bye
+                      deriving Show
 
 data C tex img = Clr | LoadTex FilePath | NewImg tex (Rect Word)
                | Rnder (Picture img) | Upd
+               deriving Show
 
 data ResponseCmd tex img m =
   ResponseCmd [C tex img] (Maybe (Response tex img -> m (ResponseCmd tex img m)))
@@ -113,7 +117,8 @@ sdlClient :: Monad m =>
 sdlClient = join . lift . fmap sdlClient' . split . runCommand
 
 sdlClient' :: Monad m =>
-              ResponseCmd tex img m -> Client [C tex img] (Response tex img) m ()
+              ResponseCmd tex img m
+              -> Client [C tex img] (Response tex img) m ()
 sdlClient' (ResponseCmd inits Nothing) = do
   resp <- request inits
   case resp of
@@ -125,9 +130,9 @@ sdlClient' (ResponseCmd inits (Just cmd)) = do
 sdlServer :: (Monad m, MonadIO m, MonadError e m, SDL.FromSDLError e) =>
              [C SDL.Texture SDL.Image]
              -> Server [C SDL.Texture SDL.Image] (Response SDL.Texture SDL.Image)
-                       (SDL.SDL e m) ()
+                       (SDL.SDL e m) (Response SDL.Texture SDL.Image)
 sdlServer cmds = runCmds cmds >>= go
-  where go Nothing     = return ()
+  where go Nothing     = return Bye
         go (Just resp) = go <=< runCmds <=< respond $ resp
         runCmds []    = return Nothing
         runCmds [cmd] = do
@@ -160,22 +165,41 @@ encodeStrict x = BSL.toStrict (B.encode x)
 decodeStrict :: Binary a => BS.ByteString -> a
 decodeStrict bs = B.decode (BSL.fromStrict bs)
 
-readBS :: (Binary a, MonadIO m) => IO.Handle -> m a
+waitM :: MonadIO m => m Bool -> m ()
+waitM cond = do
+  c <- cond
+  if c then return () else
+    do liftIO $ Concurrent.yield
+       waitM cond
+
+readBS :: (Show a, Binary a, MonadIO m) => IO.Handle -> m a
 readBS hin = do
-  payload <- decodeStrict <$> liftIO (BS.hGet hin 4)
-  decodeStrict <$> liftIO (BS.hGet hin payload)
+  waitM (liftIO . IO.hReady $ hin)
+  liftIO . putStrLn $ "reading from " ++ show hin
+  bs <- liftIO . BS.hGet hin $ 4
+  let payload = decodeStrict bs
+  liftIO . print $ "Payload reported as " ++ show payload
+  x <- decodeStrict <$> liftIO (BS.hGet hin (fromIntegral (payload::Word32)))
+  liftIO . print $ "Read " ++ show x
+  return x
+--  decodeStrict <$> liftIO (BS.hGet hin (fromIntegral (payload::Word32)))
 
-runClient :: (Binary a, Binary b, MonadIO m) =>
+writeBS :: (Binary a, MonadIO m, Show a) => IO.Handle -> a -> m ()
+writeBS hout x = liftIO $ do
+  liftIO . putStrLn $ "writing " ++ show x
+  liftIO . putStrLn $ "on " ++ show hout
+  let bs = encodeStrict x
+  let payload = encodeStrict (fromIntegral (BS.length bs) :: Word32)
+  liftIO . putStrLn $ "payload size computed at " ++ show (BS.length bs)
+  BS.hPut hout (payload `BS.append` bs)
+  IO.hFlush hout
+
+runClient :: (Binary a, Binary b, MonadIO m, Show a, Show b) =>
              IO.Handle -> IO.Handle -> Client a b m () -> Effect m ()
-runClient hin hout client = do
-  client //< \req -> do
-    let bs = encodeStrict req
-    liftIO (BS.hPut hout (encodeStrict (BS.length bs) `BS.append` bs))
-    liftIO (IO.hFlush hout)
-    readBS hin
+runClient hin hout client = client //< \req -> writeBS hout req >> readBS hin
 
-runServer :: (Binary a, Binary b, MonadIO m) =>
-             IO.Handle -> IO.Handle -> (b -> Server a b m ()) -> Effect m ()
-runServer hout hin server = do
-  req <- readBS hin
-  runClient hout hin (reflect . server $ req)
+runServer :: (Binary a, Binary b, MonadIO m, Show a, Show b) =>
+             IO.Handle -> IO.Handle -> (a -> Server a b m b) -> Effect m ()
+runServer hin hout server = do
+  ((readBS hin >>= server) //> \resp -> writeBS hout resp >> readBS hin)
+  >>= writeBS hout
