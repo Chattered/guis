@@ -2,9 +2,9 @@
 {-# LANGUAGE TemplateHaskell, DeriveDataTypeable, FlexibleContexts, RankNTypes
     , GeneralizedNewtypeDeriving, FlexibleInstances, MultiParamTypeClasses #-}
 module Backend.Internal.SDLWrap (textureDimensions, loadTexture
-                                ,newImage, renderImage
+                                ,renderImage
                                 ,update
-                                ,Texture, Image, SDL, runSDL, clear) where
+                                ,Texture, SDL, runSDL, clear) where
 
 import qualified Backend.Internal.SDL as SDL
 import           Control.Applicative hiding ((<$>))
@@ -37,27 +37,21 @@ import qualified Graphics.UI.SDL.Video as Jam
 
 -------------------------------------------------------------------------------------
 
-data ImageSpec = ImageSpec { _imgTexture :: Texture
-                           , _srcRect  :: C.Ptr SDL.Rect
-                           } deriving Eq
 data TextureSpec = TextureSpec { _texture :: SDL.Texture
                                , _textureWidth  :: Word
                                , _textureHeight :: Word
                                }
-newtype Image   = Image (N.NNeg Integer) deriving (B.Binary, Eq, Show)
 newtype Texture = Texture Word deriving (B.Binary, Eq, Show)
 data Cache = Cache { _getTextures   :: [TextureSpec]
-                   , _getImages     :: [ImageSpec]
                    , _knownTextures :: M.Map FilePath Texture
                    }
-makeLenses ''ImageSpec
 makeLenses ''TextureSpec
 makeLenses ''Cache
 
 instance Monoid Cache where
-  mempty  = Cache mempty mempty mempty
-  mappend (Cache texs imgs m) (Cache texs' imgs' m') =
-    Cache (texs `mappend` texs') (imgs `mappend` imgs') (m `mappend` m')
+  mempty  = Cache mempty mempty
+  mappend (Cache texs m) (Cache texs' m') =
+    Cache (texs `mappend` texs') (m `mappend` m')
 
 data SDLState = SDLState { _renderer :: SDL.Renderer, _window :: SDL.Window }
 makeLenses ''SDLState
@@ -82,9 +76,6 @@ acquire l = (^. l) <$> get
 
 textureSpec :: MonadIO m => Texture -> SDL e m TextureSpec
 textureSpec (Texture index) = (`genericIndex` index) <$> acquire getTextures
-
-imageSpec :: MonadIO m => Image -> SDL e m ImageSpec
-imageSpec (Image index) = fromJust . (`N.lookup` index) <$> acquire getImages
 
 -------------------------------------------------------------------------------------
 
@@ -133,7 +124,6 @@ loadTexture file = do
 
      record $ Cache
        [TextureSpec tex (fromIntegral w) (fromIntegral h)]
-       mempty
        (M.singleton file texture)
      return texture
 
@@ -145,45 +135,31 @@ textureDimensions tex = do
 nFromIntegral :: Num a => N.NNeg Word -> a
 nFromIntegral = fromIntegral . N.extract
 
-newImage :: (MonadIO m, SDL.FromSDLError e)
-            => Texture -> Rect Word -> SDL e m Image
-newImage tex rect = do
-  srcRect <- malloc
-  let (x,y) = topLeft rect
-  poke srcRect $ SDL.Rect (fromIntegral x) (fromIntegral y)
-    (nFromIntegral . width $ rect) (nFromIntegral . height $ rect)
-
-  index <- N.length <$> acquire getImages
-
-  record $ Cache
-    mempty
-    [ImageSpec tex srcRect]
-    mempty
-
-  return (Image index)
-
 renderImage :: (Monad m, MonadIO m, MonadError e m, SDL.FromSDLError e)
-               => Image -> Word -> Word -> SDL e m ()
-renderImage img x y = do
-  imgSpec <- imageSpec img
-  texSpec <- textureSpec $ imgSpec ^. imgTexture
-  let rect =  imgSpec ^. srcRect
+               => Texture -> Rect Word -> Word -> Word -> SDL e m ()
+renderImage tex srcRect x y = do
+  liftIO $ putStrLn "rendering"
 
-  SDL.Rect _ _ w h <- peek rect
-
+  texSpec <- textureSpec tex
   renderer <- use renderer
 
-  peekedRect <- liftIO . peek $ rect
-  liftIO . putStrLn $ "rendering from"
-  liftIO . print $ peekedRect
-
   sdlCont $ do
+    sdlSrcRect <- alloca
+    let fromTop = (texSpec ^. textureHeight) - top srcRect
+    let w = fromIntegral . N.extract . width $ srcRect
+    let h = fromIntegral . N.extract . height $ srcRect
+    poke sdlSrcRect $ SDL.Rect
+      (fromIntegral . left $ srcRect)
+      (fromIntegral fromTop)
+      w
+      h
+    liftIO $ putStrLn "poked"
     destRect <- alloca
-    poke destRect (SDL.Rect (fromIntegral x) (fromIntegral y) w h)
-    peekedRect <- liftIO . peek $ destRect
-    liftIO . putStrLn $ "to"
-    liftIO . print $ peekedRect
-    SDL.safeSDL_ (SDL.renderCopy renderer (texSpec ^. texture) rect destRect)
+    liftIO $ putStrLn "alloced"
+    poke destRect
+      (SDL.Rect (fromIntegral x) (fromIntegral y) w h)
+    liftIO $ putStrLn "poked again"
+    SDL.safeSDL_ (SDL.renderCopy renderer (texSpec ^. texture) sdlSrcRect destRect)
 
 -------------------------------------------------------------------------------------
 

@@ -1,6 +1,6 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-module Backend.SDLWrap (FromSDLError, Texture, Image, SDL
-                       ,textureDimensions, loadTexture, newImage
+module Backend.SDLWrap (FromSDLError, Texture, SDL
+                       ,textureDimensions, loadTexture
                        ,renderImage, update
                        ,renderSDL, runSDL, clear) where
 
@@ -13,7 +13,7 @@ import           Control.Monad.Reader
 import           Data.Binary
 import           Data.Picture
 import qualified Foreign.C.Types as C
-import           Philed.Data.NNeg
+import qualified Philed.Data.NNeg as N
 import           Philed.Data.Rect
 import           Philed.Data.Vector
 
@@ -23,7 +23,6 @@ newtype SDL e m a =
            ,MonadIO,MonadError e,MonadTrans)
 
 newtype Texture = Texture { getTexture :: I.Texture } deriving (Binary, Eq, Show)
-newtype Image   = Img     { getImage   :: I.Image } deriving (Binary, Eq, Show)
 
 textureDimensions :: (MonadIO m, MonadError e m, FromSDLError e)
                      => Texture -> SDL e m (Word, Word)
@@ -33,13 +32,9 @@ loadTexture :: (MonadError e m, MonadIO m, Monad m, FromSDLError e) =>
                FilePath -> SDL e m Texture
 loadTexture = SDL . (Texture <$>) . I.loadTexture
 
-newImage :: (MonadIO m, FromSDLError e)
-            => Texture -> Rect Word -> SDL e m Image
-newImage (Texture tex) = SDL . (Img <$>) . I.newImage tex
-
 renderImage :: (Monad m, MonadIO m, MonadError e m, FromSDLError e)
-               => Image -> Word -> Word -> SDL e m ()
-renderImage (Img img) x y = SDL (I.renderImage img x y)
+               => Texture -> Rect Word -> Word -> Word -> SDL e m ()
+renderImage (Texture tex) srcRect x y = SDL (I.renderImage tex srcRect x y)
 
 update :: (MonadIO m, MonadError e m, FromSDLError e) => SDL e m ()
 update = SDL I.update
@@ -51,11 +46,8 @@ runSDL :: (MonadIO m, MonadError e m, FromSDLError e) =>
           Vec Word -> Word -> Word -> SDL e m a -> m ()
 runSDL bottomLeft w h (SDL sdl) = I.runSDL bottomLeft w h sdl
 
-renderAt :: (Monad m, MonadIO m, MonadError e m, FromSDLError e)
-            => Picture Image -> Double -> Double -> SDL e m ()
-renderAt (Image img) x y = renderImage img (round x) (round y)
-renderAt (Translate (x',y') p) x y = renderAt p (x' + x) (y' + y)
-
 renderSDL :: (Monad m, MonadIO m, MonadError e m, FromSDLError e)
-             => Picture Image -> SDL e m ()
-renderSDL pic = renderAt pic 0 0
+             => Picture Texture -> SDL e m ()
+renderSDL (Image tex) = do
+  (w,h) <- textureDimensions tex
+  renderImage tex (mkRect (0,0) (N.abs w) (N.abs h)) 0 0

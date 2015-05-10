@@ -2,7 +2,7 @@
 
 module Main where
 
-import Backend.SDLWrap (runSDL, Image, Texture)
+import Backend.SDLWrap (runSDL, Texture)
 import qualified Control.Concurrent as Concurrent
 import Control.Lens
 import Control.Monad
@@ -35,7 +35,7 @@ withFile file ioMode =
 bracketHandle :: MonadSafe m => Handle -> m r -> m r
 bracketHandle h b = bracket (return ()) (const . liftIO $ hClose h) (const b)
 
-client :: MonadSafe m => Command Texture Image m () -> m ()
+client :: MonadSafe m => Command Texture m () -> m ()
 client cmd = do
   withFile "/disk/scratch/serverout" ReadMode $ \hin -> do
     withFile "/disk/scratch/serverin" WriteMode $ \hout -> do
