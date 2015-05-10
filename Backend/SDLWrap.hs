@@ -22,8 +22,8 @@ newtype SDL e m a =
   deriving (Applicative,Functor,Monad,MonadCatch,MonadMask,MonadThrow
            ,MonadIO,MonadError e,MonadTrans)
 
-newtype Texture = Texture { getTexture :: I.Texture } deriving (Binary, Show)
-newtype Image   = Img     { getImage   :: I.Image } deriving (Binary, Show)
+newtype Texture = Texture { getTexture :: I.Texture } deriving (Binary, Eq, Show)
+newtype Image   = Img     { getImage   :: I.Image } deriving (Binary, Eq, Show)
 
 textureDimensions :: (MonadIO m, MonadError e m, FromSDLError e)
                      => Texture -> SDL e m (Word, Word)

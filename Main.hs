@@ -35,7 +35,7 @@ withFile file ioMode =
 bracketHandle :: MonadSafe m => Handle -> m r -> m r
 bracketHandle h b = bracket (return ()) (const . liftIO $ hClose h) (const b)
 
-client :: MonadSafe m => Command Image Texture m () -> m ()
+client :: MonadSafe m => Command Texture Image m () -> m ()
 client cmd = do
   withFile "/disk/scratch/serverout" ReadMode $ \hin -> do
     withFile "/disk/scratch/serverin" WriteMode $ \hout -> do

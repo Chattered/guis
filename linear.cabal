@@ -33,6 +33,7 @@ executable linear
                      , pipes-binary
                      , pipes-bytestring
                      , pipes-safe
+                     , QuickCheck
                      , sdl2
                      , transformers
                      , unix

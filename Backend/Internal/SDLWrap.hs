@@ -44,7 +44,7 @@ data TextureSpec = TextureSpec { _texture :: SDL.Texture
                                , _textureWidth  :: Word
                                , _textureHeight :: Word
                                }
-newtype Image   = Image (N.NNeg Integer) deriving (B.Binary, Show)
+newtype Image   = Image (N.NNeg Integer) deriving (B.Binary, Eq, Show)
 newtype Texture = Texture Word deriving (B.Binary, Eq, Show)
 data Cache = Cache { _getTextures   :: [TextureSpec]
                    , _getImages     :: [ImageSpec]
@@ -116,8 +116,6 @@ texDimensions tex = sdlCont $ do
 loadTexture :: (MonadError e m, MonadIO m, SDL.FromSDLError e)
                => FilePath -> SDL e m Texture
 loadTexture file = do
-  liftIO . putStrLn $ "loading"
-
   renderer  <- use renderer
 
   preloaded <- M.lookup file <$> acquire knownTextures
@@ -131,8 +129,13 @@ loadTexture file = do
 
      (w,h)     <- texDimensions tex
 
-     record $ Cache [TextureSpec tex (fromIntegral w) (fromIntegral h)] mempty mempty
-     return (Texture index)
+     let texture = Texture index
+
+     record $ Cache
+       [TextureSpec tex (fromIntegral w) (fromIntegral h)]
+       mempty
+       (M.singleton file texture)
+     return texture
 
 textureDimensions :: MonadIO m => Texture -> SDL e m (Word, Word)
 textureDimensions tex = do
@@ -145,8 +148,6 @@ nFromIntegral = fromIntegral . N.extract
 newImage :: (MonadIO m, SDL.FromSDLError e)
             => Texture -> Rect Word -> SDL e m Image
 newImage tex rect = do
-  liftIO . putStrLn $ "create image"
-
   srcRect <- malloc
   let (x,y) = topLeft rect
   poke srcRect $ SDL.Rect (fromIntegral x) (fromIntegral y)
@@ -154,7 +155,10 @@ newImage tex rect = do
 
   index <- N.length <$> acquire getImages
 
-  record $ Cache mempty [ImageSpec tex srcRect] mempty
+  record $ Cache
+    mempty
+    [ImageSpec tex srcRect]
+    mempty
 
   return (Image index)
 

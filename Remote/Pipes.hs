@@ -54,11 +54,11 @@ update = liftF (Update ())
 data Response tex img = Img img
                       | Tex tex
                       | Bye
-                      deriving Show
+                      deriving (Eq,Show)
 
 data C tex img = Clr | LoadTex FilePath | NewImg tex (Rect Word)
                | Rnder (Picture img) | Upd
-               deriving Show
+               deriving (Eq,Show)
 
 data ResponseCmd tex img m =
   ResponseCmd [C tex img] (Maybe (Response tex img -> m (ResponseCmd tex img m)))
@@ -178,28 +178,32 @@ readBS hin = do
   liftIO . putStrLn $ "reading from " ++ show hin
   bs <- liftIO . BS.hGet hin $ 4
   let payload = decodeStrict bs
-  liftIO . print $ "Payload reported as " ++ show payload
-  x <- decodeStrict <$> liftIO (BS.hGet hin (fromIntegral (payload::Word32)))
+  liftIO . putStrLn $ "Payload size reported as " ++ show payload
+  bs <- liftIO (BS.hGet hin (fromIntegral (payload::Word32)))
+  liftIO . print $ "Read " ++ show bs
+  let x = decodeStrict bs
   liftIO . print $ "Read " ++ show x
   return x
 --  decodeStrict <$> liftIO (BS.hGet hin (fromIntegral (payload::Word32)))
 
-writeBS :: (Binary a, MonadIO m, Show a) => IO.Handle -> a -> m ()
+writeBS :: (Binary a, MonadIO m, Show a, Eq a) => IO.Handle -> a -> m ()
 writeBS hout x = liftIO $ do
   liftIO . putStrLn $ "writing " ++ show x
   liftIO . putStrLn $ "on " ++ show hout
   let bs = encodeStrict x
   let payload = encodeStrict (fromIntegral (BS.length bs) :: Word32)
   liftIO . putStrLn $ "payload size computed at " ++ show (BS.length bs)
+  liftIO . putStrLn $ "Write " ++ show bs
+  liftIO . print $ (decodeStrict bs == x)
   BS.hPut hout (payload `BS.append` bs)
   IO.hFlush hout
 
-runClient :: (Binary a, Binary b, MonadIO m, Show a, Show b) =>
+runClient :: (Binary a, Binary b, MonadIO m, Show a, Show b, Eq a, Eq b) =>
              IO.Handle -> IO.Handle -> Client a b m () -> Effect m ()
 runClient hin hout client = client //< \req -> writeBS hout req >> readBS hin
 
-runServer :: (Binary a, Binary b, MonadIO m, Show a, Show b) =>
-             IO.Handle -> IO.Handle -> (a -> Server a b m b) -> Effect m ()
+runServer :: (Binary a, Binary b, MonadIO m, Show a, Show b, Eq a, Eq b) =>
+              IO.Handle -> IO.Handle -> (a -> Server a b m b) -> Effect m ()
 runServer hin hout server = do
   ((readBS hin >>= server) //> \resp -> writeBS hout resp >> readBS hin)
   >>= writeBS hout
