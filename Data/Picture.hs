@@ -1,14 +1,22 @@
-{-# LANGUAGE DeriveFunctor #-}
-module Data.Picture where
+{-# LANGUAGE DeriveFunctor, GeneralizedNewtypeDeriving #-}
+module Data.Picture (Angle(..), Picture(..)) where
 
 import Control.Monad
 import Data.Binary
+import Philed.Data.NNeg (NNeg)
+import Philed.Data.Rect
+import Philed.Data.Vector
 import Test.QuickCheck.Arbitrary
 import Test.QuickCheck.Gen
 
+newtype Angle = Angle Double deriving (Eq,Show)
+
 data Picture i = Image i
-               | Translate (Double,Double) (Picture i)
-                 deriving (Eq,Functor,Show)
+               | Translate (Vec Double) (Picture i)
+               | Scale (NNeg Double,NNeg Double) (Picture i)
+               | Rotate Angle (Picture i)
+               | ReflectHorizontal (Picture i)
+               deriving (Eq,Functor,Show)
 
 instance Binary i => Binary (Picture i) where
   put (Image i)             = put (0::Word8) >> put i

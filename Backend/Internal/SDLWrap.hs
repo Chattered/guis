@@ -23,7 +23,8 @@ import           Data.Maybe (isJust,fromJust)
 import           Data.Monoid
 import qualified Foreign as C
 import qualified Foreign.C.Types as C
-import qualified Graphics.UI.SDL.Video as SDL (queryTexture,renderCopy)
+import qualified Graphics.UI.SDL.Enum as SDL
+import qualified Graphics.UI.SDL.Video as SDL (queryTexture,renderCopyEx)
 import qualified Graphics.UI.SDL.Types as SDL
 import           Philed.Control.Monad.Error
 import           Philed.Control.Monad.Record
@@ -32,8 +33,6 @@ import           Philed.Data.Rect
 import           Philed.Data.Vector
 import qualified Pipes.Safe as PS
 import           System.IO.Error
-
-import qualified Graphics.UI.SDL.Video as Jam
 
 -------------------------------------------------------------------------------------
 
@@ -136,30 +135,40 @@ nFromIntegral :: Num a => N.NNeg Word -> a
 nFromIntegral = fromIntegral . N.extract
 
 renderImage :: (Monad m, MonadIO m, MonadError e m, SDL.FromSDLError e)
-               => Texture -> Rect Word -> Word -> Word -> SDL e m ()
-renderImage tex srcRect x y = do
-  liftIO $ putStrLn "rendering"
-
+               => Texture -> Rect Word -> Rect Word -> Vec C.CInt -> Double -> Bool
+               -> SDL e m ()
+renderImage tex srcRect destRect (cx,cy) angle flip = do
   texSpec <- textureSpec tex
   renderer <- use renderer
 
   sdlCont $ do
     sdlSrcRect <- alloca
     let fromTop = (texSpec ^. textureHeight) - top srcRect
-    let w = fromIntegral . N.extract . width $ srcRect
-    let h = fromIntegral . N.extract . height $ srcRect
+    let srcW = fromIntegral . N.extract . width $ srcRect
+    let srcH = fromIntegral . N.extract . height $ srcRect
     poke sdlSrcRect $ SDL.Rect
       (fromIntegral . left $ srcRect)
       (fromIntegral fromTop)
-      w
-      h
-    liftIO $ putStrLn "poked"
-    destRect <- alloca
-    liftIO $ putStrLn "alloced"
-    poke destRect
-      (SDL.Rect (fromIntegral x) (fromIntegral y) w h)
-    liftIO $ putStrLn "poked again"
-    SDL.safeSDL_ (SDL.renderCopy renderer (texSpec ^. texture) sdlSrcRect destRect)
+      srcW
+      srcH
+    sdlDestRect <- alloca
+    let destW = fromIntegral . N.extract . width $ destRect
+    let destH = fromIntegral . N.extract . height $ destRect
+    poke sdlDestRect $ SDL.Rect
+      (fromIntegral . left $ destRect)
+      (fromIntegral fromTop)
+      destW
+      destH
+    sdlPoint <- alloca
+    poke sdlPoint $ SDL.Point cx cy
+    SDL.safeSDL_ $ (SDL.renderCopyEx
+      renderer
+      (texSpec ^. texture)
+      sdlSrcRect
+      sdlDestRect
+      (realToFrac angle)
+      sdlPoint
+      (if flip then SDL.SDL_FLIP_HORIZONTAL else SDL.SDL_FLIP_NONE))
 
 -------------------------------------------------------------------------------------
 

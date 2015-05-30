@@ -6,9 +6,9 @@ import qualified Control.Concurrent as Concurrent
 import qualified Backend.SDLWrap as SDL
 import Control.Monad.Except
 import qualified Control.Monad.Free as F
-import Control.Monad.Trans.Free
 import Control.Monad.State.Strict
 import Control.Monad.Trans
+import Control.Monad.Trans.Free
 import qualified Data.Binary as B
 import qualified Data.ByteString      as BS
 import qualified Data.ByteString.Lazy as BSL
@@ -137,7 +137,7 @@ runCmd :: (MonadIO m, MonadError e m, SDL.FromSDLError e) =>
           C SDL.Texture -> SDL.SDL e m (Maybe (Response SDL.Texture))
 runCmd Clr                = SDL.clear *> pure Nothing
 runCmd (LoadTex filePath) = Just . Tex <$> SDL.loadTexture filePath
-runCmd (Rnder pic)        = SDL.renderSDL pic *> pure Nothing
+runCmd (Rnder pic)        = SDL.render pic *> pure Nothing
 runCmd Upd                = SDL.update *> pure Nothing
 
 -------------------------------------------------------------------------------------
