@@ -43,7 +43,7 @@ runSDL bottomLeft w h (SDL sdl) = I.runSDL bottomLeft w h sdl
 
 render :: (Monad m, MonadIO m, MonadError e m, FromSDLError e)
             => P.Picture Texture -> SDL e m ()
-render pic = renderAt (Transform 0 (N.zero,N.zero) (0,0) False) pic
+render pic = renderAt (Transform 0 (N.suc N.zero,N.suc N.zero) (0,0) False) pic
 
 data Transform = Transform { rotation    :: Double
                            , scaling     :: (N.NNeg Double,N.NNeg Double)
@@ -76,6 +76,10 @@ renderAt (Transform rot (sx,sy) (x,y) reflectH) (P.Image tex) = do
   (width,height) <- textureDimensions tex
   dx <- f sx width
   dy <- f sy height
+  liftIO . putStrLn $
+    "Rendering texture (" ++ show width ++ "," ++ show height ++ ")"
+    ++ " at " ++ "(" ++ show x ++ "," ++ show y ++ ")"
+    ++ " with new dimensions " ++ "(" ++ show dx ++ "," ++ show dy ++ ")"
   SDL $ I.renderImage
     (getTexture tex)
     (mkRect (0,0) (N.fromWord width) (N.fromWord height))
@@ -83,11 +87,11 @@ renderAt (Transform rot (sx,sy) (x,y) reflectH) (P.Image tex) = do
     (0,0)
     rot
     reflectH
-  where f x y = if n <= fromIntegral (maxBound :: Word)
+  where f s x = if n <= fromIntegral (maxBound :: Word)
                 then return (N.fromWord . fromIntegral $ n)
                 else throwError (fromSDLError "scaling too large")
           where n :: Integer
-                n = round (N.extract x) * fromIntegral y
+                n = round (N.extract s) * fromIntegral x
 renderAt t (P.Translate v p)          = renderAt (translate v t) p
 renderAt t (P.Scale (sx,sy) p)        = renderAt (scale (sx,sy) t) p
 renderAt t (P.Rotate (P.Angle rot) p) = renderAt (rotate rot t) p

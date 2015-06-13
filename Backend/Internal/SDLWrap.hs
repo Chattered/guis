@@ -143,20 +143,19 @@ renderImage tex srcRect destRect (cx,cy) angle flip = do
 
   sdlCont $ do
     sdlSrcRect <- alloca
-    let fromTop = (texSpec ^. textureHeight) - top srcRect
     let srcW = fromIntegral . N.extract . width $ srcRect
     let srcH = fromIntegral . N.extract . height $ srcRect
     poke sdlSrcRect $ SDL.Rect
-      (fromIntegral . left $ srcRect)
-      (fromIntegral fromTop)
+      (fromIntegral . left   $ srcRect)
+      (fromIntegral . bottom $ srcRect)
       srcW
       srcH
     sdlDestRect <- alloca
     let destW = fromIntegral . N.extract . width $ destRect
     let destH = fromIntegral . N.extract . height $ destRect
     poke sdlDestRect $ SDL.Rect
-      (fromIntegral . left $ destRect)
-      (fromIntegral fromTop)
+      (fromIntegral . left   $ destRect)
+      (fromIntegral . bottom $ destRect)
       destW
       destH
     sdlPoint <- alloca
