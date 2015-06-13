@@ -28,13 +28,14 @@ executable linear
                      , lens
                      , mmorph
                      , mtl >= 2.2.1
-                     , phil-lib >= 0.1
+                     , PhiledCommon >= 0.1
                      , pipes
                      , pipes-binary
                      , pipes-bytestring
                      , pipes-safe
                      , QuickCheck
                      , sdl2
+                     , sdl2-ttf
                      , transformers
                      , unix
   -- hs-source-dirs:      
