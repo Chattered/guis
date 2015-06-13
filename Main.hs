@@ -37,8 +37,8 @@ bracketHandle h b = bracket (return ()) (const . liftIO $ hClose h) (const b)
 
 client :: MonadSafe m => Command Texture m () -> m ()
 client cmd = do
-  withFile "/disk/scratch/serverout" ReadMode $ \hin -> do
-    withFile "/disk/scratch/serverin" WriteMode $ \hout -> do
+  withFile "serverout" ReadMode $ \hin -> do
+    withFile "serverin" WriteMode $ \hout -> do
       runEffect $ runClient hin hout (sdlClient cmd)
 
 waitM :: MonadIO m => m Bool -> m ()
@@ -51,12 +51,12 @@ waitM cond = do
 
 main :: IO ()
 main = do
-  createNamedPipe "/disk/scratch/serverin"  (3 `shiftL` 7)
-  createNamedPipe "/disk/scratch/serverout" (3 `shiftL` 7)
+  createNamedPipe "serverin"  (3 `shiftL` 7)
+  createNamedPipe "serverout" (3 `shiftL` 7)
   runSDL (0,0) 200 200 . forever . h . runSafeT $ do
-    withFile "/disk/scratch/serverin" ReadMode $ \hin -> do
+    withFile "serverin" ReadMode $ \hin -> do
       waitM (liftIO . hReady $ hin)
-      withFile "/disk/scratch/serverout" WriteMode $ \hout -> do
+      withFile "serverout" WriteMode $ \hout -> do
         runEffect $ (hoist liftBase $ runServer hin hout sdlServer)
         liftIO $ putStrLn "bye"
   where h x = x `catch` (\e -> do liftIO . print $ (e::SomeException)
