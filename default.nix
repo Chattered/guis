@@ -8,6 +8,6 @@ let
     cabal-install
   ]);
 in pkgs.stdenv.mkDerivation {
-  name = "linear";
+  name = "GUIS";
   buildInputs = [ env  ];
 }
