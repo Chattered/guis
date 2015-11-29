@@ -89,7 +89,7 @@ instance Binary tex => Binary (Response tex) where
   put (Tex tex) = B.put (0::Word8) >> B.put tex
   put Bye       = B.put (1::Word8)
   get = do
-    discriminator <- (B.get::B.Get Word8)
+    discriminator <- B.get::B.Get Word8
     case discriminator of
      0 -> Tex <$> B.get
      1 -> return Bye
@@ -151,9 +151,8 @@ decodeStrict bs = B.decode (BSL.fromStrict bs)
 waitM :: MonadIO m => m Bool -> m ()
 waitM cond = do
   c <- cond
-  if c then return () else
-    do liftIO $ Concurrent.yield
-       waitM cond
+  unless c $ do liftIO Concurrent.yield
+                waitM cond
 
 readBS :: (Show a, Binary a, MonadIO m) => IO.Handle -> m a
 readBS hin = do
@@ -187,6 +186,6 @@ runClient hin hout client = client //< \req -> writeBS hout req >> readBS hin
 
 runServer :: (Binary a, Binary b, MonadIO m, Show a, Show b, Eq a, Eq b) =>
               IO.Handle -> IO.Handle -> (a -> Server a b m b) -> Effect m ()
-runServer hin hout server = do
+runServer hin hout server =
   ((readBS hin >>= server) //> \resp -> writeBS hout resp >> readBS hin)
   >>= writeBS hout

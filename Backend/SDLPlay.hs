@@ -4,19 +4,19 @@ module Backend.SDLPlay where
 import Backend.SDLWrap
 import Control.Applicative hiding ((<$>))
 import Control.Concurrent (threadDelay)
-import Control.Monad (liftM)
+import Control.Monad (liftM, unless, when)
 import Control.Monad.Error.Class
 import Control.Monad.IO.Class
 import Control.Monad.Trans (lift)
 import Data.Picture
 import qualified Foreign.C.Types as C
-import Philed.Control.Monad.Error (loopM)
+import Philed.Control.Monad.Error (spinM)
 import Philed.Data.Vector
 import Philed.Data.NNeg
 import System.CPUTime (getCPUTime)
 
-void :: Monad m => m a -> m ()
-void x = liftM (const ()) x
+ignore :: Monad m => m a -> m ()
+ignore = liftM (const ())
 
 type Time    = Double
 data Event   = NoEvent
@@ -28,8 +28,7 @@ million :: Num a => a
 million = 10^6
 
 waitTill :: MonadIO m => Double -> m ()
-waitTill x = if x <= 0 then return ()
-             else liftIO . threadDelay . round $ x * million
+waitTill x = unless (x <= 0) (liftIO . threadDelay . round $ x * million)
 
 frameFreq :: Double
 frameFreq = 1/60
@@ -43,12 +42,12 @@ playSDL :: (MonadError e m, FromSDLError f, MonadIO n, MonadError f n)
            -> (world -> Picture Texture)
            -> (Double -> Event -> world -> m world)
            -> SDL f n ()
-playSDL nat initWorld render step =
+playSDL nat initWorld renderWorld step =
   now >>= \startTime -> do
 
-    renderSDL (render initWorld)
+    render (renderWorld initWorld)
 
-    void $ flip loopM (startTime,initWorld,0) $
+    ignore $ flip spinM (startTime,initWorld,0) $
       \(lastTime,world,i) -> do
 
       -- Get the current time
@@ -61,9 +60,8 @@ playSDL nat initWorld render step =
       nextWorld <- lift (nat (step simulateFreq NoEvent world))
 
       -- Are we due to render a frame?
-      if (playTime + simulateFreq - stepTime  >= frameFreq)
-        then clear >> renderSDL (render nextWorld) >> update
-        else return ()
+      when (playTime + simulateFreq - stepTime  >= frameFreq)
+        (clear >> render (renderWorld nextWorld) >> update)
 
       -- Loop
       return (playTime,nextWorld,i+1)

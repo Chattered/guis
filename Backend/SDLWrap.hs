@@ -43,7 +43,7 @@ runSDL bottomLeft w h (SDL sdl) = I.runSDL bottomLeft w h sdl
 
 render :: (Monad m, MonadIO m, MonadError e m, FromSDLError e)
             => P.Picture Texture -> SDL e m ()
-render pic = renderAt (Transform 0 (N.suc N.zero,N.suc N.zero) (0,0) False) pic
+render = renderAt (Transform 0 (N.suc N.zero,N.suc N.zero) (0,0) False)
 
 data Transform = Transform { rotation    :: Double
                            , scaling     :: (N.NNeg Double,N.NNeg Double)
@@ -59,7 +59,7 @@ rotate :: Double -> Transform -> Transform
 rotate rot (Transform rot' (sx,sy) (ux,uy) reflectH) =
   Transform (rot + rot') (sx,sy) (vx,vy) reflectH
   where vx =    cos rot * ux + sin rot * uy
-        vy = -(sin rot) * ux + cos rot * uy
+        vy = -sin rot * ux + cos rot * uy
 
 scale :: (N.NNeg Double, N.NNeg Double) -> Transform -> Transform
 scale (sx,sy) (Transform rot (sx',sy') (x,y) reflectH) =

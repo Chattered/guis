@@ -1,4 +1,3 @@
-{-# LANGUAGE FunctionalDependencies, MultiParamTypeClasses, FlexibleContexts #-}
 module Backend.Internal.SDL where
 
 import           Control.Exception (IOException)
@@ -13,11 +12,12 @@ import           Philed.Data.Vector
 import           Data.Word
 import qualified Foreign.C                  as C
 import qualified Foreign                    as C
-import qualified Graphics.UI.SDL.Basic      as SDL
-import qualified Graphics.UI.SDL.Enum       as SDL
-import qualified Graphics.UI.SDL.Filesystem as SDL
-import qualified Graphics.UI.SDL.Types      as SDL
-import qualified Graphics.UI.SDL.Video      as SDL
+import qualified SDL.Raw.Basic      as SDL
+import qualified SDL.Raw.Enum       as SDL
+import qualified SDL.Raw.Error      as SDL
+import qualified SDL.Raw.Filesystem as SDL
+import qualified SDL.Raw.Types      as SDL
+import qualified SDL.Raw.Video      as SDL
 import           System.IO.Error (userError)
 
 -------------------------------------------------------------------------------------
@@ -33,7 +33,7 @@ throwSDLError = throwError . fromSDLError
 
 handleSDLError :: (MonadIO m, MonadError e m, FromSDLError e) => m a
 handleSDLError = do
-  cErrMsg <- liftIO                 $ SDL.getError
+  cErrMsg <- liftIO                   SDL.getError
   errMsg  <- liftIO . C.peekCString $ cErrMsg
   throwSDLError errMsg
 
@@ -41,13 +41,13 @@ safeSDL :: (MonadIO m, MonadError e m, FromSDLError e)
            => m (C.Ptr a) -> m (C.Ptr a)
 safeSDL m = do
   x <- m
-  if (x /= C.nullPtr) then return x else handleSDLError
+  if x /= C.nullPtr then return x else handleSDLError
 
 safeSDL_ :: (MonadIO m, MonadError e m, FromSDLError e)
             => m C.CInt -> m ()
 safeSDL_ m = do
   result <- m
-  if (result == 0) then return () else handleSDLError
+  unless (result == 0) handleSDLError
 
 -------------------------------------------------------------------------------------
 
@@ -58,7 +58,7 @@ quit :: (MonadIO m, MonadError e m, FromSDLError e) => m ()
 quit = SDL.quit
 
 createWindow :: (MonadIO m, MonadError e m, FromSDLError e) =>
-                Vec (Word) -> Word -> Word -> m (SDL.Window, SDL.Renderer)
+                Vec Word -> Word -> Word -> m (SDL.Window, SDL.Renderer)
 createWindow bottomLeft w h = do
   windowName <- liftIO . C.newCString $ ""
   window     <- safeSDL $ SDL.createWindow windowName
@@ -88,7 +88,7 @@ loadTexture r =
 
 surfaceToTexture :: (MonadIO m, MonadError e m, FromSDLError e)
                     => SDL.Renderer -> C.Ptr SDL.Surface -> m SDL.Texture
-surfaceToTexture renderer surface = do
+surfaceToTexture renderer surface =
   (safeSDL . SDL.createTextureFromSurface renderer $ surface)
     <* SDL.freeSurface surface
 

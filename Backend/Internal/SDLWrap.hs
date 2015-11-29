@@ -23,9 +23,9 @@ import           Data.Maybe (isJust,fromJust)
 import           Data.Monoid
 import qualified Foreign as C
 import qualified Foreign.C.Types as C
-import qualified Graphics.UI.SDL.Enum as SDL
-import qualified Graphics.UI.SDL.Video as SDL (queryTexture,renderCopyEx)
-import qualified Graphics.UI.SDL.Types as SDL
+import qualified SDL.Raw.Enum as SDL
+import qualified SDL.Raw.Video as SDL (queryTexture,renderCopyEx)
+import qualified SDL.Raw.Types as SDL
 import           Philed.Control.Monad.Error
 import           Philed.Control.Monad.Record
 import qualified Philed.Data.NNeg as N
@@ -160,14 +160,14 @@ renderImage tex srcRect destRect (cx,cy) angle flip = do
       destH
     sdlPoint <- alloca
     poke sdlPoint $ SDL.Point cx cy
-    SDL.safeSDL_ $ (SDL.renderCopyEx
+    SDL.safeSDL_ $ SDL.renderCopyEx
       renderer
       (texSpec ^. texture)
       sdlSrcRect
       sdlDestRect
       (realToFrac angle)
       sdlPoint
-      (if flip then SDL.SDL_FLIP_HORIZONTAL else SDL.SDL_FLIP_NONE))
+      (if flip then SDL.SDL_FLIP_HORIZONTAL else SDL.SDL_FLIP_NONE)
 
 -------------------------------------------------------------------------------------
 

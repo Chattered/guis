@@ -5,7 +5,7 @@ let
   env = haskellngPackages.ghcWithPackages (p: with p; [
     binary bytestring containers exceptions free lens mmorph mtl PhiledCommon pipes
     pipes-binary pipes-bytestring pipes-safe QuickCheck sdl2 sdl2-ttf transformers unix
-    cabal-install
+    cabal-install hlint
   ]);
 in pkgs.stdenv.mkDerivation {
   name = "GUIS";

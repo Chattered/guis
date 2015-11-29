@@ -37,6 +37,7 @@ executable guis
                      , pipes-safe
                      , QuickCheck
                      , sdl2
+                     , sdl2-ttf
                      , transformers
                      , unix
   -- hs-source-dirs:      
