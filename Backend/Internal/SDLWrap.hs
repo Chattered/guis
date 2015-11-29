@@ -1,6 +1,11 @@
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE TemplateHaskell, DeriveDataTypeable, FlexibleContexts, RankNTypes
-    , GeneralizedNewtypeDeriving, FlexibleInstances, MultiParamTypeClasses #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 module Backend.Internal.SDLWrap (textureDimensions, loadTexture
                                 ,renderImage
                                 ,update
@@ -23,6 +28,8 @@ import           Data.Maybe (isJust,fromJust)
 import           Data.Monoid
 import qualified Foreign as C
 import qualified Foreign.C.Types as C
+import qualified Graphics.UI.SDL.TTF as TTF
+import           Graphics.UI.SDL.TTF.FFI (TTFFont)
 import qualified SDL.Raw.Enum as SDL
 import qualified SDL.Raw.Video as SDL (queryTexture,renderCopyEx)
 import qualified SDL.Raw.Types as SDL
