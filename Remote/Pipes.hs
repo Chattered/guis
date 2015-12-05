@@ -1,123 +1,32 @@
-{-# LANGUAGE DeriveFunctor, GeneralizedNewtypeDeriving, MultiParamTypeClasses #-}
-module Remote.Pipes (Command, clear, loadTexture, render, update
-                    ,runServer, runClient, sdlClient, sdlServer) where
+module Remote.Pipes (runServer, runClient, sdlClient, sdlServer
+                    ,ResponseCmd(..)) where
 
 import qualified Control.Concurrent as Concurrent
-import qualified Backend.SDLWrap as SDL
-import Control.Monad.Except
-import qualified Control.Monad.Free as F
-import Control.Monad.State.Strict
-import Control.Monad.Trans
-import Control.Monad.Trans.Free
 import qualified Data.Binary as B
 import qualified Data.ByteString      as BS
 import qualified Data.ByteString.Lazy as BSL
-import Data.Functor.Identity
-import Data.Picture
 import Data.Word
-import Philed.Data.Rect
-import Philed.Control.Monad
+import Control.Monad
 import Pipes
 import Pipes.Binary
-import Pipes.ByteString
 import Pipes.Core
-import Pipes.Safe
 import qualified System.IO as IO
 
-data Cmd tex cmd = Clear cmd
-                 | LoadTexture FilePath (tex -> cmd)
-                 | Render (Picture tex) cmd
-                 | Update cmd
-                 deriving Functor
+data ResponseCmd c r m = ResponseCmd [c] (Maybe (r -> m (ResponseCmd c r m)))
 
-newtype Command tex m a =
-  Command { runCommand :: FreeT (Cmd tex) m a }
-  deriving (Applicative, Functor, Monad, MonadFree (Cmd tex), MonadTrans
-           ,MonadIO)
-
-clear :: Monad m => Command tex m ()
-clear = liftF (Clear ())
-
-loadTexture :: Monad m => FilePath -> Command tex m tex
-loadTexture file = join . liftF $ LoadTexture file return
-
-render :: Monad m => Picture tex -> Command tex m ()
-render pic = liftF (Render pic ())
-
-update :: Monad m => Command tex m ()
-update = liftF (Update ())
-
-data Response tex = Tex tex
-                  | Bye
-                  deriving (Eq,Show)
-
-data C tex = Clr | LoadTex FilePath | Rnder (Picture tex) | Upd
-           deriving (Eq,Show)
-
-data ResponseCmd tex m =
-  ResponseCmd [C tex] (Maybe (Response tex -> m (ResponseCmd tex m)))
-
-split :: Monad m => FreeT (Cmd tex) m () -> m (ResponseCmd tex m)
-split cmd = runFreeT cmd >>= s
-  where s (Pure ()) = return $ ResponseCmd [] Nothing
-        s (Free (Clear cmd)) = fmap f (split cmd)
-          where f (ResponseCmd init cs) = ResponseCmd (Clr : init) cs
-        s (Free (LoadTexture file cmd)) =
-          return $ ResponseCmd [LoadTex file] (Just f)
-          where f (Tex tex) = split (cmd tex)
-        s (Free (Render pic cmd)) = fmap f (split cmd)
-          where f (ResponseCmd init cs) = ResponseCmd (Rnder pic : init) cs
-        s (Free (Update cmd)) = fmap f (split cmd)
-          where f (ResponseCmd init cs) = ResponseCmd (Upd : init) cs
-
--------------------------------------------------------------------------------------
-
-instance Binary tex => Binary (C tex) where
-  put Clr               = B.put (0::Word8)
-  put (LoadTex path)    = B.put (1::Word8) >> B.put path
-  put (Rnder pic)       = B.put (2::Word8) >> B.put pic
-  put Upd               = B.put (3::Word8)
-  get = do
-    discriminator <- B.get :: B.Get Word8
-    case discriminator of
-     0 -> return Clr
-     1 -> LoadTex <$> B.get
-     2 -> Rnder   <$> B.get
-     3 -> return Upd
-
-instance Binary tex => Binary (Response tex) where
-  put (Tex tex) = B.put (0::Word8) >> B.put tex
-  put Bye       = B.put (1::Word8)
-  get = do
-    discriminator <- B.get::B.Get Word8
-    case discriminator of
-     0 -> Tex <$> B.get
-     1 -> return Bye
-
--------------------------------------------------------------------------------------
-
-sdlClient :: Monad m =>
-             Command tex m ()
-             -> Client [C tex] (Response tex) m ()
-sdlClient = join . lift . fmap sdlClient' . split . runCommand
-
-sdlClient' :: Monad m =>
-              ResponseCmd tex m
-              -> Client [C tex] (Response tex) m ()
-sdlClient' (ResponseCmd inits Nothing) = do
-  resp <- request inits
+sdlClient :: Monad m => ResponseCmd c r m -> Client [c] (Maybe r) m ()
+sdlClient (ResponseCmd cs Nothing) = do
+  resp <- request cs
   case resp of
-   Bye -> return ()
-sdlClient' (ResponseCmd inits (Just cmd)) = do
-  resp <- request inits
-  lift (cmd resp) >>= sdlClient'
+   Nothing -> return ()
+sdlClient (ResponseCmd cs (Just c)) = do
+  Just resp <- request cs
+  lift (c resp) >>= sdlClient
 
-sdlServer :: (Monad m, MonadIO m, MonadError e m, SDL.FromSDLError e) =>
-             [C SDL.Texture]
-             -> Server [C SDL.Texture] (Response SDL.Texture)
-                       (SDL.SDL e m) (Response SDL.Texture)
-sdlServer cmds = runCmds cmds >>= go
-  where go Nothing     = return Bye
+sdlServer :: Monad m =>
+             (c -> m (Maybe r)) -> [c] -> Server [c] r m ()
+sdlServer runCmd cmds = runCmds cmds >>= go
+  where go Nothing     = return ()
         go (Just resp) = go <=< runCmds <=< respond $ resp
         runCmds []    = return Nothing
         runCmds [cmd] = do
@@ -131,22 +40,11 @@ sdlServer cmds = runCmds cmds >>= go
            Nothing -> runCmds cmds
            Just _  -> error "Not expecting a response."
 
--------------------------------------------------------------------------------------
-
-runCmd :: (MonadIO m, MonadError e m, SDL.FromSDLError e) =>
-          C SDL.Texture -> SDL.SDL e m (Maybe (Response SDL.Texture))
-runCmd Clr                = SDL.clear *> pure Nothing
-runCmd (LoadTex filePath) = Just . Tex <$> SDL.loadTexture filePath
-runCmd (Rnder pic)        = SDL.render pic *> pure Nothing
-runCmd Upd                = SDL.update *> pure Nothing
-
--------------------------------------------------------------------------------------
-
 encodeStrict :: Binary a => a -> BS.ByteString
-encodeStrict x = BSL.toStrict (B.encode x)
+encodeStrict = BSL.toStrict . B.encode
 
 decodeStrict :: Binary a => BS.ByteString -> a
-decodeStrict bs = B.decode (BSL.fromStrict bs)
+decodeStrict = B.decode  . BSL.fromStrict
 
 waitM :: MonadIO m => m Bool -> m ()
 waitM cond = do
@@ -166,7 +64,6 @@ readBS hin = do
   let x = decodeStrict bs
   liftIO . print $ "Read " ++ show x
   return x
---  decodeStrict <$> liftIO (BS.hGet hin (fromIntegral (payload::Word32)))
 
 writeBS :: (Binary a, MonadIO m, Show a, Eq a) => IO.Handle -> a -> m ()
 writeBS hout x = liftIO $ do
