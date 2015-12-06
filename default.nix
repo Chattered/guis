@@ -3,11 +3,13 @@
 }:
 let
   env = haskellngPackages.ghcWithPackages (p: with p; [
-    binary bytestring containers exceptions free lens mmorph mtl PhiledCommon pipes
-    pipes-binary pipes-bytestring pipes-safe QuickCheck sdl2 sdl2-ttf transformers unix
+    binary byteorder bytestring containers exceptions free lens mmorph mtl
+    PhiledCommon pipes pipes-binary pipes-bytestring pipes-safe QuickCheck sdl2
+    sdl2-ttf transformers unix
     cabal-install hlint
   ]);
 in pkgs.stdenv.mkDerivation {
   name = "GUIS";
-  buildInputs = [ env  ];
+  buildInputs = [ env pkgs.dejavu_fonts ];
+  fonts = pkgs.dejavu_fonts;
 }

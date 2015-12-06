@@ -23,6 +23,7 @@ executable guis
                      , TypeFamilies
   build-depends:       base
                      , binary
+                     , byteorder
                      , bytestring
                      , containers
                      , exceptions
