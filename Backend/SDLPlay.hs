@@ -1,19 +1,19 @@
 {-# LANGUAGE RankNTypes #-}
 module Backend.SDLPlay where
 
-import Backend.SDLWrap
-import Control.Applicative hiding ((<$>))
 import Control.Concurrent (threadDelay)
 import Control.Monad (liftM, unless, when)
 import Control.Monad.Error.Class
 import Control.Monad.IO.Class
 import Control.Monad.Trans (lift)
-import Data.Picture
 import qualified Foreign.C.Types as C
 import Philed.Control.Monad.Error (spinM)
 import Philed.Data.Vector
 import Philed.Data.NNeg
 import System.CPUTime (getCPUTime)
+
+import Data.Picture
+import Backend.SDLWrap
 
 ignore :: Monad m => m a -> m ()
 ignore = liftM (const ())
