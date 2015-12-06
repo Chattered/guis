@@ -1,20 +1,23 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-module Backend.SDLWrap (FromSDLError, Texture, SDL
-                       ,textureDimensions, loadTexture
+module Backend.SDLWrap (Texture, SDL
+                       ,textureDimensions, loadTexture, loadString, loadRect
+                       ,module Backend.Internal.SDL
                        ,render, update, runSDL, clear) where
 
-import           Backend.Internal.SDL     (FromSDLError, fromSDLError)
-import qualified Backend.Internal.SDLWrap as I
-import           Control.Applicative hiding ((<$>))
 import           Control.Monad.Catch
 import           Control.Monad.Except
 import           Control.Monad.Reader
 import           Data.Binary
 import qualified Data.Picture as P
 import qualified Foreign.C.Types as C
+import           Graphics.UI.SDL.TTF.FFI (TTFFont)
 import qualified Philed.Data.NNeg as N
 import           Philed.Data.Rect
 import           Philed.Data.Vector
+
+import           Backend.Internal.SDL     (FromSDLError, fromSDLError, loadFont
+                                          ,rgbaColour, Colour)
+import qualified Backend.Internal.SDLWrap as I
 
 newtype SDL e m a =
   SDL { unSDL :: I.SDL e m a }
@@ -30,6 +33,14 @@ textureDimensions = SDL . I.textureDimensions . getTexture
 loadTexture :: (MonadError e m, MonadIO m, Monad m, FromSDLError e) =>
                FilePath -> SDL e m Texture
 loadTexture = SDL . (Texture <$>) . I.loadTexture
+
+loadString :: (MonadError e m, MonadIO m, Monad m, FromSDLError e) =>
+              TTFFont -> String -> Colour -> SDL e m Texture
+loadString font str col = SDL (Texture <$> I.loadString font str col)
+
+loadRect :: (MonadIO m, MonadError e m, FromSDLError e) =>
+            Vec Word -> Colour -> SDL e m Texture
+loadRect wh col = SDL (Texture <$> I.loadRect wh col)
 
 update :: (MonadIO m, MonadError e m, FromSDLError e) => SDL e m ()
 update = SDL I.update
@@ -80,7 +91,7 @@ renderAt (Transform rot (sx,sy) (x,y) reflectH) (P.Image tex) = do
     "Rendering texture (" ++ show width ++ "," ++ show height ++ ")"
     ++ " at " ++ "(" ++ show x ++ "," ++ show y ++ ")"
     ++ " with new dimensions " ++ "(" ++ show dx ++ "," ++ show dy ++ ")"
-  SDL $ I.renderImage
+  SDL $ I.renderTexture
     (getTexture tex)
     (mkRect (0,0) (N.fromWord width) (N.fromWord height))
     (mkRect (round x,round y) dx dy)

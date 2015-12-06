@@ -1,18 +1,16 @@
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-module Backend.Internal.SDLWrap (textureDimensions, loadTexture
-                                ,renderImage
+module Backend.Internal.SDLWrap (textureDimensions, loadTexture, loadString, loadRect
+                                ,renderTexture
                                 ,update
                                 ,Texture, SDL, runSDL, clear) where
 
-import qualified Backend.Internal.SDL as SDL
-import           Control.Applicative hiding ((<$>))
+import           Control.Applicative
 import           Control.Exception (IOException)
 import           Control.Lens
 import           Control.Monad.Catch hiding (catchIOError,finally)
@@ -41,23 +39,32 @@ import           Philed.Data.Vector
 import qualified Pipes.Safe as PS
 import           System.IO.Error
 
+import qualified Backend.Internal.SDL as SDL
+
 -------------------------------------------------------------------------------------
 
 data TextureSpec = TextureSpec { _texture :: SDL.Texture
                                , _textureWidth  :: Word
                                , _textureHeight :: Word
                                }
+
 newtype Texture = Texture Word deriving (B.Binary, Eq, Show)
 data Cache = Cache { _getTextures   :: [TextureSpec]
                    , _knownTextures :: M.Map FilePath Texture
+                   , _knownStrings  :: M.Map (TTFFont, String, SDL.Colour) Texture
+                   , _knownRects    :: M.Map (Vec Word, SDL.Colour) Texture
                    }
 makeLenses ''TextureSpec
 makeLenses ''Cache
 
 instance Monoid Cache where
-  mempty  = Cache mempty mempty
-  mappend (Cache texs m) (Cache texs' m') =
-    Cache (texs `mappend` texs') (m `mappend` m')
+  mempty  = Cache mempty mempty mempty mempty
+  mappend (Cache texs tm sm rm) (Cache texs' tm' sm' rm') =
+    Cache
+    (texs `mappend` texs')
+    (tm `mappend` tm')
+    (sm `mappend` sm')
+    (rm `mappend` rm')
 
 data SDLState = SDLState { _renderer :: SDL.Renderer, _window :: SDL.Window }
 makeLenses ''SDLState
@@ -120,18 +127,72 @@ loadTexture file = do
   case preloaded of
    Just tex -> return tex
    Nothing  -> do
-     tex       <- SDL.loadTexture renderer file
+     tex   <- SDL.loadTexture renderer file
 
-     index     <- genericLength <$> acquire getTextures
+     index <- genericLength <$> acquire getTextures
 
-     (w,h)     <- texDimensions tex
+     (w,h) <- texDimensions tex
 
      let texture = Texture index
 
      record $ Cache
        [TextureSpec tex (fromIntegral w) (fromIntegral h)]
        (M.singleton file texture)
+       mempty
+       mempty
      return texture
+
+loadString
+  :: (MonadIO m, MonadError e m, SDL.FromSDLError e) =>
+     TTFFont -> String -> SDL.Colour -> SDL e m Texture
+loadString font string colour = do
+  renderer <- use renderer
+
+  preloaded <- M.lookup (font,string,colour) <$> acquire knownStrings
+
+  case preloaded of
+    Just tex -> return tex
+    Nothing  -> do
+      tex   <- SDL.stringTexture renderer font string colour
+
+      index <- genericLength <$> acquire getTextures
+
+      (w,h) <- texDimensions tex
+
+      let texture = Texture index
+
+      record $ Cache
+        [TextureSpec tex (fromIntegral w) (fromIntegral h)]
+        mempty
+        (M.singleton (font,string,colour) texture)
+        mempty
+      return texture
+
+loadRect
+  :: (MonadIO m, MonadError e m, SDL.FromSDLError e) =>
+     Vec Word -> SDL.Colour -> SDL e m Texture
+loadRect wh colour = do
+  renderer <- use renderer
+
+  preloaded <- M.lookup (wh,colour) <$> acquire knownRects
+
+  case preloaded of
+    Just tex -> return tex
+    Nothing  -> do
+      tex   <- SDL.rectTexture renderer wh colour
+
+      index <- genericLength <$> acquire getTextures
+
+      (w,h) <- texDimensions tex
+
+      let texture = Texture index
+
+      record $ Cache
+        [TextureSpec tex (fromIntegral w) (fromIntegral h)]
+        mempty
+        mempty
+        (M.singleton (wh,colour) texture)
+      return texture
 
 textureDimensions :: MonadIO m => Texture -> SDL e m (Word, Word)
 textureDimensions tex = do
@@ -141,10 +202,10 @@ textureDimensions tex = do
 nFromIntegral :: Num a => N.NNeg Word -> a
 nFromIntegral = fromIntegral . N.extract
 
-renderImage :: (Monad m, MonadIO m, MonadError e m, SDL.FromSDLError e)
-               => Texture -> Rect Word -> Rect Word -> Vec C.CInt -> Double -> Bool
-               -> SDL e m ()
-renderImage tex srcRect destRect (cx,cy) angle flip = do
+renderTexture :: (Monad m, MonadIO m, MonadError e m, SDL.FromSDLError e)
+                 => Texture -> Rect Word -> Rect Word -> Vec C.CInt -> Double -> Bool
+                 -> SDL e m ()
+renderTexture tex srcRect destRect (cx,cy) angle flip = do
   texSpec <- textureSpec tex
   renderer <- use renderer
 
@@ -175,6 +236,12 @@ renderImage tex srcRect destRect (cx,cy) angle flip = do
       (realToFrac angle)
       sdlPoint
       (if flip then SDL.SDL_FLIP_HORIZONTAL else SDL.SDL_FLIP_NONE)
+
+rectTexture :: (MonadIO m, S.MonadState SDLState m) =>
+               Vec Word -> SDL.Colour -> m SDL.Texture
+rectTexture wh col = do
+  renderer <- use renderer
+  SDL.rectTexture renderer wh col
 
 -------------------------------------------------------------------------------------
 
