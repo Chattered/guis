@@ -1,17 +1,19 @@
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Remote.Graphics (Command, clear, loadTexture, render, update
                        ,P.runServer, P.runClient, sdlClient, sdlServer) where
 
-import qualified Backend.SDLWrap as SDL
 import           Control.Monad.Except
 import           Control.Monad.Trans.Free
 import qualified Data.Binary as B
-import           Data.Picture
+import           GHC.Generics (Generic)
 import           Pipes.Binary
 import           Pipes.ByteString
 import           Pipes.Core
 
+import qualified Backend.SDLWrap as SDL
+import           Data.Picture
 import qualified Remote.Pipes as P
 
 data Cmd tex cmd = Clear cmd
@@ -37,10 +39,10 @@ render pic = liftF (Render pic ())
 update :: Monad m => Command tex m ()
 update = liftF (Update ())
 
-newtype Response tex = Tex tex deriving (Eq,Show)
+newtype Response tex = Tex tex deriving (Eq,Generic,Show)
 
 data C tex = Clr | LoadTex FilePath | Rnder (Picture tex) | Upd
-           deriving (Eq,Show)
+           deriving (Eq,Generic,Show)
 
 split :: Monad m =>
          FreeT (Cmd tex) m () -> m (P.ResponseCmd (C tex) (Response tex) m)
@@ -75,22 +77,5 @@ runCmd Upd                = SDL.update *> pure Nothing
 
 -------------------------------------------------------------------------------------
 
-instance Binary tex => Binary (C tex) where
-  put Clr               = B.put (0::Word8)
-  put (LoadTex path)    = B.put (1::Word8) >> B.put path
-  put (Rnder pic)       = B.put (2::Word8) >> B.put pic
-  put Upd               = B.put (3::Word8)
-  get = do
-    discriminator <- B.get :: B.Get Word8
-    case discriminator of
-     0 -> return Clr
-     1 -> LoadTex <$> B.get
-     2 -> Rnder   <$> B.get
-     3 -> return Upd
-
-instance Binary tex => Binary (Response tex) where
-  put (Tex tex) = B.put (0::Word8) >> B.put tex
-  get = do
-    discriminator <- B.get::B.Get Word8
-    case discriminator of
-     0 -> Tex <$> B.get
+instance Binary tex => Binary (C tex)
+instance Binary tex => Binary (Response tex)
