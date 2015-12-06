@@ -1,7 +1,8 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-module Remote.TextTile where
+module Remote.TextTile (Command, newGlyph, lay, remove, update
+                       ,P.runServer, P.runClient, textClient, textServer) where
 
 import           Control.Monad.Except
 import           Control.Monad.Trans.Free
@@ -64,34 +65,39 @@ split cmd = runFreeT cmd >>= s
         s (Free (Update cmd)) = fmap f (split cmd)
           where f (P.ResponseCmd init cs) = P.ResponseCmd (Upd : init) cs
 
-sdlClient :: Monad m => Command tile m ()
+textClient :: Monad m => Command tile m ()
              -> Client [C tile] (Maybe (Response tile)) m ()
-sdlClient = join . lift . fmap P.sdlClient . split . runCommand
+textClient = join . lift . fmap P.client . split . runCommand
 
-sdlServer ::
+textServer ::
   (MonadIO m, MonadError e m, SDL.FromSDLError e) =>
   [C SDL.Texture]
-  -> Server [C SDL.Texture] (Response SDL.Texture) (SDL.SDL e m) ()
-sdlServer cmds = do
+  -> Server [C SDL.Texture] (Maybe (Response SDL.Texture)) (SDL.SDL e m) ()
+textServer cmds = do
   run <- lift $ do
     fontDir <- liftIO (getEnv "fonts")
-    dejavu <- SDL.loadFont (fontDir ++ "/share/fonts/truetype/DejaVuSansMono.ttf") 14
-    x <- SDL.loadString dejavu "X" (SDL.rgbaColour 0xFF 0xFF 0xFF 0xFF)
+    let fontFile = (fontDir ++ "/share/fonts/truetype/DejaVuSansMono.ttf")
+    let ptSize = 14
+    dejavu <- SDL.loadFont fontFile ptSize
+    x <- SDL.loadString fontFile ptSize "X" (SDL.rgbaColour 0xFF 0xFF 0xFF 0xFF)
     (w,h) <- SDL.textureDimensions x
     eraser <- SDL.loadRect (w,h) (SDL.rgbaColour 0x0 0x0 0x0 0xFF)
-    return (runCmd eraser dejavu)
-  P.sdlServer run cmds
+    return (runCmd w h eraser (fontFile,ptSize))
+  P.server run cmds
 
 runCmd :: (MonadIO m, MonadError e m, SDL.FromSDLError e) =>
-         SDL.Texture -> SDL.TTFFont
+         Word -> Word -> SDL.Texture -> (FilePath, Int)
          -> C SDL.Texture -> SDL.SDL e m (Maybe (Response SDL.Texture))
-runCmd eraser font cmd = case cmd of
-  NewG c col   -> Just . Tile <$> SDL.loadString font [c] col
-  Lie tile m n -> SDL.render (P.Translate (vecOf m n) (P.Image tile)) *> pure Nothing
+runCmd w h eraser (fontFile, ptSize) cmd = case cmd of
+  NewG c col   -> Just . Tile <$> SDL.loadString fontFile ptSize [c] col
+  Lie tile m n -> SDL.render (P.Translate (vecOf m n) (P.Image tile))
+                  *> pure Nothing
   Rem m n      -> SDL.render (P.Translate (vecOf m n) (P.Image eraser))
                   *> pure Nothing
   Upd          -> SDL.update *> pure Nothing
-  where vecOf m n = (fromIntegral . extract $ m, fromIntegral . extract $ n)
+  where vecOf m n =
+          ((fromIntegral . extract $ m) * fromIntegral w,
+           (fromIntegral . extract $ n) * fromIntegral h)
 
 instance Binary tile => Binary (C tile)
 instance Binary tile => Binary (Response tile)

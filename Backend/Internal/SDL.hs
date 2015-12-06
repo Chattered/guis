@@ -141,12 +141,15 @@ amask :: Word32
           $ zip [24,16,8,0] [b1,b2,b3,b4] in
     (r,g,b,a)
 
-rectTexture :: MonadIO m => SDL.Renderer -> Vec Word -> Colour -> m SDL.Texture
-rectTexture renderer (w,h) (Colour (SDL.Color r g b a)) = do
-  sPtr <- SDL.createRGBSurface 0 (fromIntegral w) (fromIntegral h)
-       8
-       rmask gmask bmask amask
+rectTexture :: (MonadIO m, MonadError e m, FromSDLError e)
+               => C.Ptr SDL.PixelFormat -> SDL.Renderer
+               -> Vec Word -> Colour -> m SDL.Texture
+rectTexture fmt renderer (w,h) (Colour (SDL.Color r g b a)) = do
+  sPtr <- safeSDL $
+          SDL.createRGBSurface 0 (fromIntegral w) (fromIntegral h)
+          32
+          rmask gmask bmask amask
   s <- liftIO . C.peek $ sPtr
-  c <- SDL.mapRGBA (SDL.surfaceFormat s) r g b a
+  c <- SDL.mapRGBA fmt r g b a
   SDL.fillRect sPtr C.nullPtr c
   SDL.createTextureFromSurface renderer sPtr <* SDL.freeSurface sPtr

@@ -35,8 +35,9 @@ loadTexture :: (MonadError e m, MonadIO m, Monad m, FromSDLError e) =>
 loadTexture = SDL . (Texture <$>) . I.loadTexture
 
 loadString :: (MonadError e m, MonadIO m, Monad m, FromSDLError e) =>
-              TTFFont -> String -> Colour -> SDL e m Texture
-loadString font str col = SDL (Texture <$> I.loadString font str col)
+              FilePath -> Int -> String -> Colour -> SDL e m Texture
+loadString fontFile ptSize str col =
+  SDL (Texture <$> I.loadString fontFile ptSize str col)
 
 loadRect :: (MonadIO m, MonadError e m, FromSDLError e) =>
             Vec Word -> Colour -> SDL e m Texture

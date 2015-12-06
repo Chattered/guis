@@ -1,4 +1,4 @@
-module Remote.Pipes (runServer, runClient, sdlClient, sdlServer
+module Remote.Pipes (runServer, runClient, client, server
                     ,ResponseCmd(..)) where
 
 import qualified Control.Concurrent as Concurrent
@@ -14,20 +14,21 @@ import qualified System.IO as IO
 
 data ResponseCmd c r m = ResponseCmd [c] (Maybe (r -> m (ResponseCmd c r m)))
 
-sdlClient :: Monad m => ResponseCmd c r m -> Client [c] (Maybe r) m ()
-sdlClient (ResponseCmd cs Nothing) = do
+client :: Monad m => ResponseCmd c r m -> Client [c] (Maybe r) m ()
+client (ResponseCmd cs Nothing) = do
   resp <- request cs
   case resp of
    Nothing -> return ()
-sdlClient (ResponseCmd cs (Just c)) = do
+   Just _  -> error "Not expecting a response."
+client (ResponseCmd cs (Just c)) = do
   Just resp <- request cs
-  lift (c resp) >>= sdlClient
+  lift (c resp) >>= client
 
-sdlServer :: Monad m =>
-             (c -> m (Maybe r)) -> [c] -> Server [c] r m ()
-sdlServer runCmd cmds = runCmds cmds >>= go
+server :: Monad m =>
+          (c -> m (Maybe r)) -> [c] -> Server [c] (Maybe r) m ()
+server runCmd cmds = runCmds cmds >>= go
   where go Nothing     = return ()
-        go (Just resp) = go <=< runCmds <=< respond $ resp
+        go (Just resp) = go <=< runCmds <=< respond $ (Just resp)
         runCmds []    = return Nothing
         runCmds [cmd] = do
           resp' <- lift . runCmd $ cmd
@@ -35,10 +36,10 @@ sdlServer runCmd cmds = runCmds cmds >>= go
            Nothing     -> return Nothing
            Just resp'' -> return (Just resp'')
         runCmds (cmd:cmds) = do
-          resp' <- lift . runCmd $ cmd
-          case resp' of
+          ret <- lift . runCmd $ cmd
+          case ret of
            Nothing -> runCmds cmds
-           Just _  -> error "Not expecting a response."
+           Just _  -> error "Not expecting a return value."
 
 encodeStrict :: Binary a => a -> BS.ByteString
 encodeStrict = BSL.toStrict . B.encode
@@ -73,7 +74,6 @@ writeBS hout x = liftIO $ do
   let payload = encodeStrict (fromIntegral (BS.length bs) :: Word32)
   liftIO . putStrLn $ "payload size computed at " ++ show (BS.length bs)
   liftIO . putStrLn $ "Write " ++ show bs
-  liftIO . print $ (decodeStrict bs == x)
   BS.hPut hout (payload `BS.append` bs)
   IO.hFlush hout
 
@@ -82,7 +82,7 @@ runClient :: (Binary a, Binary b, MonadIO m, Show a, Show b, Eq a, Eq b) =>
 runClient hin hout client = client //< \req -> writeBS hout req >> readBS hin
 
 runServer :: (Binary a, Binary b, MonadIO m, Show a, Show b, Eq a, Eq b) =>
-              IO.Handle -> IO.Handle -> (a -> Server a b m b) -> Effect m ()
+              IO.Handle -> IO.Handle -> (a -> Server a b m ()) -> Effect m ()
 runServer hin hout server =
   ((readBS hin >>= server) //> \resp -> writeBS hout resp >> readBS hin)
-  >>= writeBS hout
+  *> writeBS hout (Nothing :: Maybe ())

@@ -29,7 +29,7 @@ import qualified Foreign.C.Types as C
 import qualified Graphics.UI.SDL.TTF as TTF
 import           Graphics.UI.SDL.TTF.FFI (TTFFont)
 import qualified SDL.Raw.Enum as SDL
-import qualified SDL.Raw.Video as SDL (queryTexture,renderCopyEx)
+import qualified SDL.Raw.Video as SDL (queryTexture,renderCopyEx,getWindowSurface)
 import qualified SDL.Raw.Types as SDL
 import           Philed.Control.Monad.Error
 import           Philed.Control.Monad.Record
@@ -51,7 +51,8 @@ data TextureSpec = TextureSpec { _texture :: SDL.Texture
 newtype Texture = Texture Word deriving (B.Binary, Eq, Show)
 data Cache = Cache { _getTextures   :: [TextureSpec]
                    , _knownTextures :: M.Map FilePath Texture
-                   , _knownStrings  :: M.Map (TTFFont, String, SDL.Colour) Texture
+                   , _knownStrings  ::
+                         M.Map (String, Int, String, SDL.Colour) Texture
                    , _knownRects    :: M.Map (Vec Word, SDL.Colour) Texture
                    }
 makeLenses ''TextureSpec
@@ -95,6 +96,7 @@ textureSpec (Texture index) = (`genericIndex` index) <$> acquire getTextures
 runSDL :: (MonadIO m, MonadError e m, SDL.FromSDLError e) =>
           Vec Word -> Word -> Word -> SDL e m a -> m ()
 runSDL bottomLeft w h sdl = flip finally SDL.quit $ do
+  SDL.init
   (window, renderer) <- SDL.createWindow bottomLeft (fromIntegral w) (fromIntegral h)
   ioRef <- liftIO $ newIORef (SDLState renderer window, mempty)
   flip finally (SDL.destroyWindow window) $ runReaderT (unSDL sdl) ioRef
@@ -144,15 +146,17 @@ loadTexture file = do
 
 loadString
   :: (MonadIO m, MonadError e m, SDL.FromSDLError e) =>
-     TTFFont -> String -> SDL.Colour -> SDL e m Texture
-loadString font string colour = do
+     FilePath -> Int -> String -> SDL.Colour -> SDL e m Texture
+loadString fontFile ptSize string colour = do
   renderer <- use renderer
 
-  preloaded <- M.lookup (font,string,colour) <$> acquire knownStrings
+  preloaded <- M.lookup (fontFile,ptSize,string,colour) <$> acquire knownStrings
 
   case preloaded of
     Just tex -> return tex
     Nothing  -> do
+      font  <- SDL.safeSDL (SDL.loadFont fontFile ptSize)
+
       tex   <- SDL.stringTexture renderer font string colour
 
       index <- genericLength <$> acquire getTextures
@@ -164,7 +168,7 @@ loadString font string colour = do
       record $ Cache
         [TextureSpec tex (fromIntegral w) (fromIntegral h)]
         mempty
-        (M.singleton (font,string,colour) texture)
+        (M.singleton (fontFile,ptSize,string,colour) texture)
         mempty
       return texture
 
@@ -173,13 +177,17 @@ loadRect
      Vec Word -> SDL.Colour -> SDL e m Texture
 loadRect wh colour = do
   renderer <- use renderer
+  window   <- use window
+
+  sPtr <- SDL.safeSDL (SDL.getWindowSurface window)
+  fmt  <- SDL.surfaceFormat <$> liftIO (C.peek sPtr)
 
   preloaded <- M.lookup (wh,colour) <$> acquire knownRects
 
   case preloaded of
     Just tex -> return tex
     Nothing  -> do
-      tex   <- SDL.rectTexture renderer wh colour
+      tex   <- SDL.rectTexture fmt renderer wh colour
 
       index <- genericLength <$> acquire getTextures
 
@@ -202,7 +210,7 @@ textureDimensions tex = do
 nFromIntegral :: Num a => N.NNeg Word -> a
 nFromIntegral = fromIntegral . N.extract
 
-renderTexture :: (Monad m, MonadIO m, MonadError e m, SDL.FromSDLError e)
+renderTexture :: (MonadIO m, MonadError e m, SDL.FromSDLError e)
                  => Texture -> Rect Word -> Rect Word -> Vec C.CInt -> Double -> Bool
                  -> SDL e m ()
 renderTexture tex srcRect destRect (cx,cy) angle flip = do
@@ -237,12 +245,6 @@ renderTexture tex srcRect destRect (cx,cy) angle flip = do
       sdlPoint
       (if flip then SDL.SDL_FLIP_HORIZONTAL else SDL.SDL_FLIP_NONE)
 
-rectTexture :: (MonadIO m, S.MonadState SDLState m) =>
-               Vec Word -> SDL.Colour -> m SDL.Texture
-rectTexture wh col = do
-  renderer <- use renderer
-  SDL.rectTexture renderer wh col
-
 -------------------------------------------------------------------------------------
 
 newtype SDLCont r a =
@@ -270,7 +272,7 @@ instance MonadError IOException (SDLCont r) where
     SDLCont (ContT (\k -> catchIOError (runContT c k)
                           (\e -> runSDLCont (handler e) k )))
 
-sdlCont :: (Monad m, MonadError e m, MonadIO m, SDL.FromSDLError e)
+sdlCont :: (MonadError e m, MonadIO m, SDL.FromSDLError e)
            => SDLCont a a -> SDL e m a
 sdlCont x = lift $ join $ liftIO $
             catchIOError sdl

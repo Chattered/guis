@@ -60,13 +60,13 @@ split cmd = runFreeT cmd >>= s
 
 sdlClient :: Monad m => Command tex m ()
              -> Client [C tex] (Maybe (Response tex)) m ()
-sdlClient = join . lift . fmap P.sdlClient . split . runCommand
+sdlClient = join . lift . fmap P.client . split . runCommand
 
 sdlServer ::
   (MonadIO m, MonadError e m, SDL.FromSDLError e) =>
   [C SDL.Texture]
   -> Server [C SDL.Texture] (Response SDL.Texture) (SDL.SDL e m) ()
-sdlServer = P.sdlServer runCmd
+sdlServer = P.server runCmd
 
 runCmd :: (MonadIO m, MonadError e m, SDL.FromSDLError e) =>
           C SDL.Texture -> SDL.SDL e m (Maybe (Response SDL.Texture))
