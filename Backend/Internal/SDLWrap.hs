@@ -179,15 +179,12 @@ loadRect wh colour = do
   renderer <- use renderer
   window   <- use window
 
-  sPtr <- SDL.safeSDL (SDL.getWindowSurface window)
-  fmt  <- SDL.surfaceFormat <$> liftIO (C.peek sPtr)
-
   preloaded <- M.lookup (wh,colour) <$> acquire knownRects
 
   case preloaded of
     Just tex -> return tex
     Nothing  -> do
-      tex   <- SDL.rectTexture fmt renderer wh colour
+      tex   <- SDL.rectTexture renderer wh colour
 
       index <- genericLength <$> acquire getTextures
 

@@ -141,15 +141,38 @@ amask :: Word32
           $ zip [24,16,8,0] [b1,b2,b3,b4] in
     (r,g,b,a)
 
+word8ToWord32 :: Word8 -> Word32
+word8ToWord32 n =
+  iterate (\m -> m `shiftL` 8 .|. m) n' !! 3
+  where n' = fromIntegral n
+
+word32OfRGBA :: Colour -> Word32
+word32OfRGBA (Colour (SDL.Color r g b a)) =
+  (r' .&. rmask) .|. (g' .&. gmask) .|. (b' .&. bmask) .|. (a' .&. amask)
+  where r' = word8ToWord32 r
+        g' = word8ToWord32 g
+        b' = word8ToWord32 b
+        a' = word8ToWord32 a
+
 rectTexture :: (MonadIO m, MonadError e m, FromSDLError e)
-               => C.Ptr SDL.PixelFormat -> SDL.Renderer
-               -> Vec Word -> Colour -> m SDL.Texture
-rectTexture fmt renderer (w,h) (Colour (SDL.Color r g b a)) = do
-  sPtr <- safeSDL $
-          SDL.createRGBSurface 0 (fromIntegral w) (fromIntegral h)
-          32
-          rmask gmask bmask amask
-  s <- liftIO . C.peek $ sPtr
-  c <- SDL.mapRGBA fmt r g b a
-  SDL.fillRect sPtr C.nullPtr c
-  SDL.createTextureFromSurface renderer sPtr <* SDL.freeSurface sPtr
+               => SDL.Renderer -> Vec Word -> Colour -> m SDL.Texture
+rectTexture renderer (w,h) c = do
+  let c' = word32OfRGBA c
+  sPtr  <- safeSDL $ SDL.createRGBSurface 0 w' h' 32 0 0 0 0
+  s     <- liftIO . C.peek $ sPtr
+  safeSDL_ $ SDL.lockSurface sPtr
+  let pixelsPtr = C.castPtr $ SDL.surfacePixels s
+  liftIO . flip (iterateNM (fromIntegral $ w'*h')) pixelsPtr $ \p -> do
+    C.poke p c'
+    return (C.plusPtr p 4)
+  SDL.unlockSurface sPtr
+  t <- safeSDL (SDL.createTexture renderer SDL.SDL_PIXELFORMAT_RGBA8888
+                SDL.SDL_TEXTUREACCESS_STATIC w' h')
+  safeSDL_ $ SDL.updateTexture t C.nullPtr (SDL.surfacePixels s) (w'*4)
+  safeSDL_ $ SDL.setTextureBlendMode t SDL.SDL_BLENDMODE_BLEND
+  return t
+  where iterateNM :: Monad m => Int -> (a -> m a) -> a -> m a
+        iterateNM 0 f = return
+        iterateNM n f = f >=> iterateNM (n-1) f
+        w' = fromIntegral w
+        h' = fromIntegral h
