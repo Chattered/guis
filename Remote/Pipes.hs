@@ -79,7 +79,9 @@ writeBS hout x = liftIO $ do
 
 runClient :: (Binary a, Binary b, MonadIO m, Show a, Show b, Eq a, Eq b) =>
              IO.Handle -> IO.Handle -> Client a b m () -> Effect m ()
-runClient hin hout client = client //< \req -> writeBS hout req >> readBS hin
+runClient hin hout client =
+  (client //< \req -> writeBS hout req >> readBS hin)
+  *> writeBS hout (Nothing :: Maybe ())
 
 runServer :: (Binary a, Binary b, MonadIO m, Show a, Show b, Eq a, Eq b) =>
               IO.Handle -> IO.Handle -> (a -> Server a b m ()) -> Effect m ()
