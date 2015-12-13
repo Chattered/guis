@@ -79,7 +79,7 @@ init :: (MonadIO m, MonadError e m, FromSDLError e) => m ()
 init = safeSDL_ (SDL.init SDL.SDL_INIT_VIDEO) >> safeSDL_ (liftIO TTF.init)
 
 quit :: (MonadIO m, MonadError e m, FromSDLError e) => m ()
-quit = (liftIO TTF.quit) >> SDL.quit
+quit = liftIO TTF.quit >> SDL.quit
 
 createWindow :: (MonadIO m, MonadError e m, FromSDLError e) =>
                 Vec Word -> Word -> Word -> m (SDL.Window, SDL.Renderer)
@@ -112,8 +112,7 @@ loadTexture r =
 
 loadFont:: (MonadIO m, MonadError e m, FromSDLError e) =>
            FilePath -> Int -> m (C.Ptr ())
-loadFont file ptSize = do
-  safeSDL (liftIO (TTF.openFont file ptSize))
+loadFont file ptSize = safeSDL (liftIO (TTF.openFont file ptSize))
 
 stringTexture :: (MonadIO m, MonadError e m, FromSDLError e)
                  => SDL.Renderer -> TTFFont -> String -> Colour
@@ -137,7 +136,7 @@ amask :: Word32
   LittleEndian -> (0x000000FF,0x0000FF00,0x00FF0000,0xFF000000)
   Mixed (b1,b2,b3,b4) ->
     let [r,g,b,a] =
-          map (0xFF `shiftL`) . map fst . sortBy (compare `on` snd)
+          map ((0xFF `shiftL`) . fst) . sortBy (compare `on` snd)
           $ zip [24,16,8,0] [b1,b2,b3,b4] in
     (r,g,b,a)
 
@@ -160,8 +159,8 @@ rectTexture renderer (w,h) c = do
   let c' = word32OfRGBA c
   sPtr  <- safeSDL $ SDL.createRGBSurface 0 w' h' 32 0 0 0 0
   s     <- liftIO . C.peek $ sPtr
-  safeSDL_ $ SDL.lockSurface sPtr
-  let pixelsPtr = C.castPtr $ SDL.surfacePixels s
+  safeSDL_ . SDL.lockSurface $ sPtr
+  let pixelsPtr = C.castPtr . SDL.surfacePixels $ s
   liftIO . flip (iterateNM (fromIntegral $ w'*h')) pixelsPtr $ \p -> do
     C.poke p c'
     return (C.plusPtr p 4)
