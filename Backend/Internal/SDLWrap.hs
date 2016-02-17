@@ -31,7 +31,7 @@ import           Graphics.UI.SDL.TTF.FFI (TTFFont)
 import qualified SDL.Raw.Enum as SDL
 import qualified SDL.Raw.Video as SDL (queryTexture,renderCopyEx,getWindowSurface)
 import qualified SDL.Raw.Types as SDL
-import           Philed.Control.Monad.Error
+import           Philed.Control.Monad.Except
 import           Philed.Control.Monad.Record
 import qualified Philed.Data.NNeg as N
 import           Philed.Data.Rect
