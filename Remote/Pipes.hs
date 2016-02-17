@@ -28,7 +28,7 @@ server :: Monad m =>
           (c -> m (Maybe r)) -> [c] -> Server [c] (Maybe r) m ()
 server runCmd cmds = runCmds cmds >>= go
   where go Nothing     = return ()
-        go (Just resp) = go <=< runCmds <=< respond $ (Just resp)
+        go (Just resp) = go <=< runCmds <=< respond $ Just resp
         runCmds []    = return Nothing
         runCmds [cmd] = do
           resp' <- lift . runCmd $ cmd
@@ -51,6 +51,7 @@ waitM :: MonadIO m => m Bool -> m ()
 waitM cond = do
   c <- cond
   unless c $ do liftIO Concurrent.yield
+                liftIO . Concurrent.threadDelay $ 1000
                 waitM cond
 
 readBS :: (Show a, Binary a, MonadIO m) => IO.Handle -> m a
