@@ -129,7 +129,8 @@ gmask :: Word32
 bmask :: Word32
 amask :: Word32
 (rmask,gmask,bmask,amask) =
-  case byteOrder of
+  case BigEndian of -- TODO: Figure out the correct format for hardware textures
+--  case byteOrder of
   BigEndian -> (0xFF000000,0x00FF0000,0x0000FF00,0x000000FF)
   LittleEndian -> (0x000000FF,0x0000FF00,0x00FF0000,0xFF000000)
   Mixed (b1,b2,b3,b4) ->
