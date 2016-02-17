@@ -21,25 +21,27 @@ executable guis
                      , RankNTypes
                      , TemplateHaskell
                      , TypeFamilies
-  build-depends:       base
-                     , binary
-                     , byteorder
-                     , bytestring
-                     , containers
-                     , exceptions
-                     , free
-                     , lens
-                     , mmorph
-                     , mtl
-                     , PhiledCommon
-                     , pipes
-                     , pipes-binary
-                     , pipes-bytestring
-                     , pipes-safe
-                     , QuickCheck
-                     , sdl2
-                     , sdl2-ttf
-                     , transformers
-                     , unix
+  build-depends:     array
+                   , base
+                   , binary
+                   , byteorder
+                   , bytestring
+                   , containers
+                   , exceptions
+                   , free
+                   , lens
+                   , mmorph
+                   , mtl
+                   , PhiledCommon
+                   , pipes
+                   , pipes-binary
+                   , pipes-bytestring
+                   , pipes-safe
+                   , QuickCheck
+                   , sdl2
+                   , sdl2-ttf
+                   , semigroups >= 0.16.2.2
+                   , transformers
+                   , unix
   -- hs-source-dirs:      
   default-language:    Haskell2010
