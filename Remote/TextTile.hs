@@ -19,10 +19,11 @@ import qualified Backend.SDLWrap as SDL
 import qualified Data.Picture as P
 import qualified Remote.Pipes as P
 
-data Cmd tile cmd = NewGlyph Char SDL.Colour (tile -> cmd)
+data Cmd tile cmd = NewGlyph Char P.Colour (tile -> cmd)
                   | Lay tile (NNeg Integer) (NNeg Integer) cmd
                   | Remove (NNeg Integer) (NNeg Integer) cmd
                   | Update cmd
+                  | Sleep cmd
                   deriving Functor
 
 newtype Command tile m a =
@@ -30,8 +31,8 @@ newtype Command tile m a =
   deriving (Applicative, Functor, Monad, MonadFree (Cmd tile), MonadTrans
            ,MonadIO)
 
-newGlyph :: Monad m => Char -> SDL.Colour -> Command tile m tile
-newGlyph c col = join . liftF $ NewGlyph c col return
+newGlyph :: Monad m => P.Colour -> Char -> Command tile m tile
+newGlyph col c = join . liftF $ NewGlyph c col return
 
 lay :: Monad m => tile -> NNeg Integer -> NNeg Integer -> Command tile m ()
 lay tile m n = liftF (Lay tile m n ())
@@ -42,13 +43,20 @@ remove m n = liftF (Remove m n ())
 update :: Monad m => Command tile m ()
 update = liftF (Update ())
 
-newtype Response tile = Tile tile deriving (Eq,Generic,Show)
+sleep :: Monad m => Command tile m ()
+sleep = liftF (Sleep ())
+
+data Response tile =
+  Tile tile
+  | Awake
+  deriving (Eq,Generic,Show)
 
 data C tile =
-  NewG Char SDL.Colour
+  NewG Char P.Colour
   | Lie tile (NNeg Integer) (NNeg Integer)
   | Rem (NNeg Integer) (NNeg Integer)
   | Upd
+  | Slp
   deriving (Eq,Generic,Show)
 
 split :: Monad m =>
@@ -58,12 +66,17 @@ split cmd = runFreeT cmd >>= s
         s (Free (NewGlyph c col cmd)) =
           return $ P.ResponseCmd [NewG c col] (Just f)
           where f (Tile tile) = split (cmd tile)
+                f _           = error "BUG: Tile required."
         s (Free (Lay tile m n cmd)) = fmap f (split cmd)
           where f (P.ResponseCmd init cs) = P.ResponseCmd (Lie tile m n : init) cs
         s (Free (Remove m n cmd)) = fmap f (split cmd)
           where f (P.ResponseCmd init cs) = P.ResponseCmd (Rem m n : init) cs
         s (Free (Update cmd)) = fmap f (split cmd)
           where f (P.ResponseCmd init cs) = P.ResponseCmd (Upd : init) cs
+        s (Free (Sleep cmd)) =
+          return $ P.ResponseCmd [Slp] (Just f)
+          where f Awake = split cmd
+                f _     = error "BUG: Awake required"
 
 textClient :: Monad m => Command tile m ()
              -> Client [C tile] (Maybe (Response tile)) m ()
@@ -89,12 +102,14 @@ runCmd :: (MonadIO m, MonadError e m, SDL.FromSDLError e) =>
          Word -> Word -> SDL.Texture -> (FilePath, Int)
          -> C SDL.Texture -> SDL.SDL e m (Maybe (Response SDL.Texture))
 runCmd w h eraser (fontFile, ptSize) cmd = case cmd of
-  NewG c col   -> Just . Tile <$> SDL.loadString fontFile ptSize [c] col
+  NewG c col   ->
+    Just . Tile <$> SDL.loadString fontFile ptSize [c] (SDL.ofColour col)
   Lie tile m n -> SDL.render (P.Translate (vecOf m n) (P.Image tile))
                   *> pure Nothing
   Rem m n      -> SDL.render (P.Translate (vecOf m n) (P.Image eraser))
                   *> pure Nothing
   Upd          -> SDL.update *> pure Nothing
+  Slp          -> liftIO (threadDelay 100000) *> pure (Just Awake)
   where vecOf m n =
           ((fromIntegral . extract $ m) * fromIntegral w,
            (fromIntegral . extract $ n) * fromIntegral h)

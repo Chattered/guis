@@ -1,5 +1,6 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Backend.SDLWrap (Texture, SDL
+                       ,ofColour
                        ,textureDimensions, loadTexture, loadString, loadRect
                        ,module Backend.Internal.SDL
                        ,render, update, runSDL, clear) where
@@ -25,6 +26,15 @@ newtype SDL e m a =
            ,MonadIO,MonadError e,MonadTrans)
 
 newtype Texture = Texture { getTexture :: I.Texture } deriving (Binary, Eq, Show)
+
+ofColour :: P.Colour -> Colour
+ofColour P.Red     = rgbaColour 0xff 0x0 0x0 0xff
+ofColour P.Green   = rgbaColour 0x0 0xff 0x0 0xff
+ofColour P.Yellow  = rgbaColour 0xff 0xff 0x0 0xff
+ofColour P.Blue    = rgbaColour 0x0 0x0 0xff 0xff
+ofColour P.Magenta = rgbaColour 0xff 0x0 0xff 0xff
+ofColour P.Cyan    = rgbaColour 0x0 0xff 0xff 0xff
+ofColour P.White   = rgbaColour 0xff 0xff 0xff 0xff
 
 textureDimensions :: (MonadIO m, MonadError e m, FromSDLError e)
                      => Texture -> SDL e m (Word, Word)

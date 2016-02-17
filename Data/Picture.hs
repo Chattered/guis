@@ -1,7 +1,7 @@
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-module Data.Picture (Angle(..), Picture(..)) where
+module Data.Picture (Angle(..), Picture(..), Colour(..)) where
 
 import Control.Monad
 import Data.Binary
@@ -21,7 +21,12 @@ data Picture i = Image i
                | ReflectHorizontal (Picture i)
                deriving (Eq,Functor,Generic,Show)
 
+data Colour = Red | Green | Yellow | Blue | Magenta | Cyan | White
+            deriving (Eq,Generic,Show)
+
 instance Binary i => Binary (Picture i)
+
+instance Binary Colour where
 
 instance Arbitrary i => Arbitrary (Picture i) where
   arbitrary = frequency [(1, liftM Image arbitrary)
