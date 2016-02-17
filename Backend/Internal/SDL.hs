@@ -11,8 +11,6 @@ import           Data.Bits
 import           Data.Function
 import           Data.List (sortBy)
 import           Data.Monoid
-import           Data.Picture
-import           Data.Word
 import qualified Foreign.C                  as C
 import qualified Foreign                    as C
 import           GHC.Generics (Generic)
