@@ -1,9 +1,13 @@
+{-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-module Remote.TextTile (Command, newGlyph, lay, remove, update
-                       ,P.runServer, P.runClient, textClient, textServer) where
 
+module Remote.TextTile (Command, newGlyph, lay, remove, update, sleep
+                       ,P.runServer, P.runClient, textClient, textServer
+                       ,hoistCommand) where
+
+import           Control.Concurrent (threadDelay)
 import           Control.Monad.Except
 import           Control.Monad.Trans.Free
 import qualified Data.Binary as B
@@ -116,3 +120,7 @@ runCmd w h eraser (fontFile, ptSize) cmd = case cmd of
 
 instance Binary tile => Binary (C tile)
 instance Binary tile => Binary (Response tile)
+
+hoistCommand :: (Monad m, Monad n) =>
+                (forall a. m a -> n a) -> Command tile m a -> Command tile n a
+hoistCommand f = Command . hoistFreeT f . runCommand
