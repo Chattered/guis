@@ -6,13 +6,12 @@ module Remote.Graphics (Command, clear, loadTexture, render, update
 
 import           Control.Monad.Except
 import           Control.Monad.Trans.Free
-import qualified Data.Binary as B
 import           GHC.Generics (Generic)
 import           Pipes.Binary
-import           Pipes.ByteString
 import           Pipes.Core
-
+import qualified SDLM.Types as SDL
 import qualified Backend.SDLWrap as SDL
+
 import           Data.Picture
 import qualified Remote.Pipes as P
 

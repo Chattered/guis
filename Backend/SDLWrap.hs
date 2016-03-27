@@ -1,19 +1,21 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Backend.SDLWrap (Texture, SDL
+                       ,module SDLM.Types
+                       ,SDLM.Video.loadFont
                        ,ofColour
                        ,textureDimensions, loadTexture, loadString, loadRect
-                       ,module Backend.Internal.SDL
                        ,render, update, runSDL, clear) where
 
 import           Control.Monad.Catch
 import           Control.Monad.Except
 import           Data.Binary
-import qualified Data.Picture as P
-import qualified Philed.Data.NNeg as N
+import qualified Data.Picture             as P
+import qualified Philed.Data.NNeg         as N
 import           Philed.Data.Rect
 import           Philed.Data.Vector
-import           Backend.Internal.SDL     (FromSDLError, fromSDLError, loadFont
-                                          ,rgbaColour, Colour)
+import           SDLM.Video hiding (clear, loadTexture, update)
+import           SDLM.Types
+
 import qualified Backend.Internal.SDLWrap as I
 
 newtype SDL e m a =

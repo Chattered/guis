@@ -1,29 +1,16 @@
 module Main where
 
 import qualified Control.Concurrent as Concurrent
-import Control.Lens
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.Morph
-import Control.Monad.State.Strict
-import Control.Monad.Trans
 import Data.Bits
-import qualified Data.ByteString as BS
-import Philed.Data.Rect
-import Philed.Data.NNeg
 import Pipes
-import Pipes.Binary hiding (get)
-import Pipes.ByteString
-import Pipes.Core
-import Pipes.Prelude (drain)
 import Pipes.Safe
 import Prelude hiding (null)
 import System.IO hiding (withFile)
-import System.IO.Error
 import System.Posix.Files
-
 import Backend.SDLWrap (clear, runSDL, Texture)
-import Data.Picture
 import Remote.TextTile
 
 withFile :: MonadSafe m => FilePath -> IOMode -> (Handle -> m r) -> m r

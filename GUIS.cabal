@@ -42,6 +42,7 @@ library
                    , QuickCheck
                    , sdl2
                    , sdl2-ttf == 1.0.0
+                   , SDLM
                    , semigroups >= 0.16.2.2
                    , transformers
                    , unix
@@ -78,6 +79,7 @@ executable guis
                    , QuickCheck
                    , sdl2
                    , sdl2-ttf == 1.0.0
+                   , SDLM
                    , semigroups >= 0.16.2.2
                    , transformers
                    , unix

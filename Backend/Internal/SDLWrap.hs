@@ -33,7 +33,9 @@ import           Philed.Data.Rect
 import           Philed.Data.Vector
 import           System.IO.Error
 
-import qualified Backend.Internal.SDL as SDL
+import qualified SDLM.Main as SDL
+import qualified SDLM.Types as SDL
+import qualified SDLM.Video as SDL
 
 -------------------------------------------------------------------------------------
 
