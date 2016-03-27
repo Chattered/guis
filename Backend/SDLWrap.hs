@@ -11,7 +11,7 @@ import           Control.Monad.Reader
 import           Data.Binary
 import qualified Data.Picture as P
 import qualified Foreign.C.Types as C
-import           Graphics.UI.SDL.TTF.FFI (TTFFont)
+import           SDL.TTF.FFI (TTFFont)
 import qualified Philed.Data.NNeg as N
 import           Philed.Data.Rect
 import           Philed.Data.Vector

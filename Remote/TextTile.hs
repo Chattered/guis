@@ -12,7 +12,7 @@ import           Control.Monad.Except
 import           Control.Monad.Trans.Free
 import qualified Data.Binary as B
 import           GHC.Generics (Generic)
-import qualified Graphics.UI.SDL.TTF.FFI as SDL (TTFFont)
+import qualified SDL.TTF.FFI as SDL (TTFFont)
 import           Philed.Data.NNeg
 import           Pipes.Binary
 import           Pipes.ByteString

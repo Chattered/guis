@@ -13,9 +13,10 @@ import           Data.List (sortBy)
 import           Data.Monoid
 import qualified Foreign.C                  as C
 import qualified Foreign                    as C
+import qualified Foreign.Marshal.Utils      as C
 import           GHC.Generics (Generic)
-import qualified Graphics.UI.SDL.TTF     as TTF
-import           Graphics.UI.SDL.TTF.FFI (TTFFont)
+import qualified SDL.TTF.FFI as TTF
+import           SDL.TTF.FFI (TTFFont)
 import           Philed.Data.Rect
 import           Philed.Data.Vector
 import qualified SDL.Raw.Basic      as SDL
@@ -110,13 +111,17 @@ loadTexture r =
 
 loadFont:: (MonadIO m, MonadError e m, FromSDLError e) =>
            FilePath -> Int -> m (C.Ptr ())
-loadFont file ptSize = safeSDL (liftIO (TTF.openFont file ptSize))
+loadFont file ptSize =
+  liftIO . C.withCString file $ \cFile ->
+  safeSDL (liftIO (TTF.openFont cFile (fromIntegral ptSize)))
 
 stringTexture :: (MonadIO m, MonadError e m, FromSDLError e)
                  => SDL.Renderer -> TTFFont -> String -> Colour
                  -> m SDL.Texture
 stringTexture r f str (Colour c) =
-  safeSDL (liftIO (TTF.renderUTF8Solid f str c)) >>= surfaceToTexture r
+  liftIO . C.withCString str $ \cStr ->
+  liftIO . C.with c $ \cc ->
+  safeSDL (TTF.renderUTF8Solid f cStr cc) >>= surfaceToTexture r
 
 surfaceToTexture :: (MonadIO m, MonadError e m, FromSDLError e)
                     => SDL.Renderer -> C.Ptr SDL.Surface -> m SDL.Texture

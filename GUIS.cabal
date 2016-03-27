@@ -39,7 +39,7 @@ executable guis
                    , pipes-safe
                    , QuickCheck
                    , sdl2
-                   , sdl2-ttf
+                   , sdl2-ttf == 1.0.0
                    , semigroups >= 0.16.2.2
                    , transformers
                    , unix

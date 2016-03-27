@@ -26,8 +26,8 @@ import           Data.Maybe (isJust,fromJust)
 import           Data.Monoid
 import qualified Foreign as C
 import qualified Foreign.C.Types as C
-import qualified Graphics.UI.SDL.TTF as TTF
-import           Graphics.UI.SDL.TTF.FFI (TTFFont)
+import qualified SDL.TTF as TTF
+import           SDL.TTF.FFI (TTFFont)
 import qualified SDL.Raw.Enum as SDL
 import qualified SDL.Raw.Video as SDL (queryTexture,renderCopyEx,getWindowSurface)
 import qualified SDL.Raw.Types as SDL
