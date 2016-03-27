@@ -1,5 +1,3 @@
-{-# LANGUAGE FlexibleContexts, MultiParamTypeClasses #-}
-
 module Main where
 
 import qualified Control.Concurrent as Concurrent
@@ -44,15 +42,14 @@ client cmd =
 waitM :: MonadIO m => m Bool -> m ()
 waitM cond = do
   c <- cond
-  unless c $ do liftIO . Concurrent.threadDelay $ 1000000
-                liftIO   Concurrent.yield
+  unless c $ do liftIO Concurrent.yield
                 waitM cond
 
 main :: IO ()
 main = do
   createNamedPipe "serverin"  (3 `shiftL` 7)
   createNamedPipe "serverout" (3 `shiftL` 7)
-  runSDL (0,0) 200 200 $ do
+  runSDL (0,0) 640 480 $ do
     clear
     forever . h . runSafeT $ do
       withFile "serverin" ReadMode $ \hin -> do
