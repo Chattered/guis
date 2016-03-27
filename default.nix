@@ -15,4 +15,7 @@ in pkgs.stdenv.mkDerivation {
   name = "GUIS";
   buildInputs = [ myemacs myhaskell pkgs.dejavu_fonts ];
   fonts = pkgs.dejavu_fonts;
+  shellHook = ''
+    emacs-tcp guis .emacs
+  '';
 }
