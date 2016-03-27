@@ -15,28 +15,22 @@ import           Control.Exception (IOException)
 import           Control.Lens
 import           Control.Monad.Catch hiding (catchIOError,finally)
 import           Control.Monad.Cont
-import           Control.Monad.Except
 import           Control.Monad.Reader
 import qualified Control.Monad.State as S
 import qualified Data.Binary as B
 import           Data.IORef
 import           Data.List (genericIndex, genericLength)
 import qualified Data.Map as M
-import           Data.Maybe (isJust,fromJust)
-import           Data.Monoid
 import qualified Foreign as C
 import qualified Foreign.C.Types as C
-import qualified SDL.TTF as TTF
-import           SDL.TTF.FFI (TTFFont)
 import qualified SDL.Raw.Enum as SDL
-import qualified SDL.Raw.Video as SDL (queryTexture,renderCopyEx,getWindowSurface)
+import qualified SDL.Raw.Video as SDL (queryTexture,renderCopyEx)
 import qualified SDL.Raw.Types as SDL
 import           Philed.Control.Monad.Except
 import           Philed.Control.Monad.Record
 import qualified Philed.Data.NNeg as N
 import           Philed.Data.Rect
 import           Philed.Data.Vector
-import qualified Pipes.Safe as PS
 import           System.IO.Error
 
 import qualified Backend.Internal.SDL as SDL

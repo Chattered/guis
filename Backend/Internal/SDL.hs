@@ -1,11 +1,7 @@
 module Backend.Internal.SDL where
 
-import           Control.Applicative
 import           Control.Exception (IOException)
-import           Control.Monad.IO.Class
 import           Control.Monad.Except
-import           Control.Monad.Error.Class
-import           Control.Monad.Reader
 import           Data.Binary
 import           Data.Bits
 import           Data.Function
@@ -13,20 +9,15 @@ import           Data.List (sortBy)
 import           Data.Monoid
 import qualified Foreign.C                  as C
 import qualified Foreign                    as C
-import qualified Foreign.Marshal.Utils      as C
-import           GHC.Generics (Generic)
 import qualified SDL.TTF.FFI as TTF
 import           SDL.TTF.FFI (TTFFont)
-import           Philed.Data.Rect
 import           Philed.Data.Vector
 import qualified SDL.Raw.Basic      as SDL
 import qualified SDL.Raw.Enum       as SDL
 import qualified SDL.Raw.Error      as SDL
-import qualified SDL.Raw.Filesystem as SDL
 import qualified SDL.Raw.Types      as SDL
 import qualified SDL.Raw.Video      as SDL
 import           System.ByteOrder
-import           System.IO.Error (userError)
 
 -------------------------------------------------------------------------------------
 

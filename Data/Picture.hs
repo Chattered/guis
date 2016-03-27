@@ -7,7 +7,6 @@ import Control.Monad
 import Data.Binary
 import GHC.Generics
 import Philed.Data.NNeg (NNeg)
-import Philed.Data.Rect
 import Philed.Data.Vector
 import Test.QuickCheck.Arbitrary
 import Test.QuickCheck.Gen

@@ -10,12 +10,9 @@ module Remote.TextTile (Command, newGlyph, lay, remove, update, sleep
 import           Control.Concurrent (threadDelay)
 import           Control.Monad.Except
 import           Control.Monad.Trans.Free
-import qualified Data.Binary as B
 import           GHC.Generics (Generic)
-import qualified SDL.TTF.FFI as SDL (TTFFont)
 import           Philed.Data.NNeg
 import           Pipes.Binary
-import           Pipes.ByteString
 import           Pipes.Core
 import           System.Environment (getEnv)
 

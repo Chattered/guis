@@ -6,10 +6,7 @@ import Control.Monad (liftM, unless, when)
 import Control.Monad.Error.Class
 import Control.Monad.IO.Class
 import Control.Monad.Trans (lift)
-import qualified Foreign.C.Types as C
-import Philed.Control.Monad.Error (spinM)
-import Philed.Data.Vector
-import Philed.Data.NNeg
+import Philed.Control.Monad.Except (spinM)
 import System.CPUTime (getCPUTime)
 
 import Data.Picture
