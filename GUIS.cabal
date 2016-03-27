@@ -9,6 +9,44 @@ category:            Game
 build-type:          Simple
 cabal-version:       >=1.10
 
+library
+  exposed-modules:     Data.Picture
+                     , Remote.Graphics
+                     , Remote.TextTile
+  other-extensions:    DeriveDataTypeable
+                     , DeriveFunctor
+                     , FlexibleContexts
+                     , FlexibleInstances
+                     , FunctionalDependencies
+                     , GeneralizedNewtypeDeriving
+                     , MultiParamTypeClasses
+                     , RankNTypes
+                     , TemplateHaskell
+                     , TypeFamilies
+  build-depends:     array
+                   , base
+                   , binary
+                   , byteorder
+                   , bytestring
+                   , containers
+                   , exceptions
+                   , free
+                   , lens
+                   , mmorph
+                   , mtl
+                   , PhiledCommon
+                   , pipes
+                   , pipes-binary
+                   , pipes-bytestring
+                   , pipes-safe
+                   , QuickCheck
+                   , sdl2
+                   , sdl2-ttf == 1.0.0
+                   , semigroups >= 0.16.2.2
+                   , transformers
+                   , unix
+  -- hs-source-dirs:      
+  default-language:    Haskell2010
 executable guis
   main-is:             Main.hs
   other-extensions:    DeriveDataTypeable
