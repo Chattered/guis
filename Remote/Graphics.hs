@@ -65,7 +65,7 @@ sdlClient = join . lift . fmap P.client . split . runCommand
 sdlServer ::
   (MonadIO m, MonadError e m, SDL.FromSDLError e) =>
   [C SDL.Texture]
-  -> Server [C SDL.Texture] (Response SDL.Texture) (SDL.SDL e m) ()
+  -> Server [C SDL.Texture] (Maybe (Response SDL.Texture)) (SDL.SDL e m) ()
 sdlServer = P.server runCmd
 
 runCmd :: (MonadIO m, MonadError e m, SDL.FromSDLError e) =>
