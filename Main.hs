@@ -6,12 +6,16 @@ import Control.Monad.Except
 import Control.Monad.Morph
 import Data.Bits
 import Pipes
+import Pipes.Core
 import Pipes.Safe
 import Prelude hiding (null)
 import System.IO hiding (withFile)
 import System.Posix.Files
 import Backend.SDLWrap (clear, runSDL, Texture)
-import Remote.TextTile
+import Data.TextTile
+
+import qualified Remote.Pipes as P
+import qualified Backend.SDLWrap as SDL
 
 withFile :: MonadSafe m => FilePath -> IOMode -> (Handle -> m r) -> m r
 withFile file ioMode =
@@ -24,7 +28,7 @@ client :: MonadSafe m => Command Texture m () -> m ()
 client cmd =
   withFile "serverout" ReadMode $ \hin ->
     withFile "serverin" WriteMode $ \hout ->
-      runEffect $ runClient hin hout (textClient cmd)
+      runEffect $ P.runClient hin hout (textClient cmd)
 
 waitM :: MonadIO m => m Bool -> m ()
 waitM cond = do
@@ -42,7 +46,12 @@ main = do
       withFile "serverin" ReadMode $ \hin -> do
         waitM (liftIO . hReady $ hin)
         withFile "serverout" WriteMode $ \hout -> do
-          runEffect $ hoist liftBase $ runServer hin hout textServer
+          runEffect $ hoist liftBase $ P.runServer hin hout textServer
           liftIO $ putStrLn "bye"
   where h x = x `catch` (\e -> do liftIO . print $ (e::SomeException)
                                   return ())
+        textServer cmds = join (((P.server $) <$> lift serveText) <*> pure cmds)
+
+textClient :: Monad m => Command tile m ()
+              -> Client [C tile] (Maybe (Response tile)) m ()
+textClient = join . lift . fmap P.client . textTileResponseCmd
