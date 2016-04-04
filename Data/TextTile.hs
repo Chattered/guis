@@ -3,22 +3,20 @@
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
-module Remote.TextTile (Command, newGlyph, lay, remove, update, sleep
-                       ,P.runServer, P.runClient, textClient, textServer
-                       ,hoistCommand) where
+module Data.TextTile (Command, newGlyph, lay, remove, update, sleep, serveText
+                     ,hoistCommand, C, Response, textTileResponseCmd) where
 
 import           Control.Concurrent (threadDelay)
 import           Control.Monad.Except
 import           Control.Monad.Trans.Free
+import           Data.Binary
 import           GHC.Generics (Generic)
 import           Philed.Data.NNeg
-import           Pipes.Binary
-import           Pipes.Core
 import           System.Environment (getEnv)
 
 import qualified Backend.SDLWrap as SDL
 import qualified Data.Picture as P
-import qualified Remote.Pipes as P
+import qualified Remote.Pipes as P (ResponseCmd(..))
 
 data Cmd tile cmd = NewGlyph Char P.Colour (tile -> cmd)
                   | Lay tile (NNeg Integer) (NNeg Integer) cmd
@@ -79,16 +77,10 @@ split cmd = runFreeT cmd >>= s
           where f Awake = split cmd
                 f _     = error "BUG: Awake required"
 
-textClient :: Monad m => Command tile m ()
-             -> Client [C tile] (Maybe (Response tile)) m ()
-textClient = join . lift . fmap P.client . split . runCommand
-
-textServer ::
-  (MonadIO m, MonadError e m, SDL.FromSDLError e) =>
-  [C SDL.Texture]
-  -> Server [C SDL.Texture] (Maybe (Response SDL.Texture)) (SDL.SDL e m) ()
-textServer cmds = do
-  run <- lift $ do
+serveText
+  :: (MonadIO m, MonadError e m, SDL.FromSDLError e) =>
+     SDL.SDL e m (C SDL.Texture -> SDL.SDL e m (Maybe (Response SDL.Texture)))
+serveText = do
     fontDir <- liftIO (getEnv "fonts")
     let fontFile = (fontDir ++ "/share/fonts/truetype/DejaVuSansMono.ttf")
     let ptSize = 14
@@ -97,7 +89,6 @@ textServer cmds = do
     (w,h) <- SDL.textureDimensions x
     eraser <- SDL.loadRect (w,h) (SDL.rgbaColour 0x0 0x0 0x0 0xFF)
     return (runCmd w h eraser (fontFile,ptSize))
-  P.server run cmds
 
 runCmd :: (MonadIO m, MonadError e m, SDL.FromSDLError e) =>
          Word -> Word -> SDL.Texture -> (FilePath, Int)
@@ -110,10 +101,15 @@ runCmd w h eraser (fontFile, ptSize) cmd = case cmd of
   Rem m n      -> SDL.render (P.Translate (vecOf m n) (P.Image eraser))
                   *> pure Nothing
   Upd          -> SDL.update *> pure Nothing
-  Slp          -> liftIO (threadDelay 100000) *> pure (Just Awake)
+  Slp          -> liftIO (threadDelay 500) *> pure (Just Awake)
   where vecOf m n =
           ((fromIntegral . extract $ m) * fromIntegral w,
            (fromIntegral . extract $ n) * fromIntegral h)
+
+textTileResponseCmd :: Monad m =>
+                       Command tile m ()
+                       -> m (P.ResponseCmd (C tile) (Response tile) m)
+textTileResponseCmd = split . runCommand
 
 instance Binary tile => Binary (C tile)
 instance Binary tile => Binary (Response tile)

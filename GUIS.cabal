@@ -11,8 +11,8 @@ cabal-version:       >=1.10
 
 library
   exposed-modules:     Data.Picture
-                     , Remote.Graphics
-                     , Remote.TextTile
+                     , Data.Graphics
+                     , Data.TextTile
   other-extensions:    DeriveDataTypeable
                      , DeriveFunctor
                      , FlexibleContexts

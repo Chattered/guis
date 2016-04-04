@@ -1,14 +1,25 @@
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-module Remote.Graphics (Command, clear, loadTexture, render, update
-                       ,P.runServer, P.runClient, sdlClient, sdlServer) where
+module Data.Graphics (Command, clear, loadTexture, render, update
+                     ,P.runServer, P.runClient) where
+
+--sdlClient, sdlServer
+
+-- sdlClient :: Monad m => Command tex m ()
+--              -> Client [C tex] (Maybe (Response tex)) m ()
+-- sdlClient = join . lift . fmap P.client . split . runCommand
+
+-- sdlServer ::
+--   (MonadIO m, MonadError e m, SDL.FromSDLError e) =>
+--   [C SDL.Texture]
+--   -> Server [C SDL.Texture] (Maybe (Response SDL.Texture)) (SDL.SDL e m) ()
+-- sdlServer = P.server runCmd
 
 import           Control.Monad.Except
 import           Control.Monad.Trans.Free
+import           Data.Binary
 import           GHC.Generics (Generic)
-import           Pipes.Binary
-import           Pipes.Core
 import qualified SDLM.Types as SDL
 import qualified Backend.SDLWrap as SDL
 
@@ -56,16 +67,6 @@ split cmd = runFreeT cmd >>= s
           where f (P.ResponseCmd init cs) = P.ResponseCmd (Rnder pic : init) cs
         s (Free (Update cmd)) = fmap f (split cmd)
           where f (P.ResponseCmd init cs) = P.ResponseCmd (Upd : init) cs
-
-sdlClient :: Monad m => Command tex m ()
-             -> Client [C tex] (Maybe (Response tex)) m ()
-sdlClient = join . lift . fmap P.client . split . runCommand
-
-sdlServer ::
-  (MonadIO m, MonadError e m, SDL.FromSDLError e) =>
-  [C SDL.Texture]
-  -> Server [C SDL.Texture] (Maybe (Response SDL.Texture)) (SDL.SDL e m) ()
-sdlServer = P.server runCmd
 
 runCmd :: (MonadIO m, MonadError e m, SDL.FromSDLError e) =>
           C SDL.Texture -> SDL.SDL e m (Maybe (Response SDL.Texture))
