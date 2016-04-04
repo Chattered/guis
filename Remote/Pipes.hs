@@ -57,24 +57,24 @@ waitM cond = do
 readBS :: (Show a, Binary a, MonadIO m) => IO.Handle -> m a
 readBS hin = do
   waitM (liftIO . IO.hReady $ hin)
-  liftIO . putStrLn $ "reading from " ++ show hin
+--  liftIO . putStrLn $ "reading from " ++ show hin
   bs <- liftIO . BS.hGet hin $ 4
   let payload = decodeStrict bs
-  liftIO . putStrLn $ "Payload size reported as " ++ show payload
+--  liftIO . putStrLn $ "Payload size reported as " ++ show payload
   bs <- liftIO (BS.hGet hin (fromIntegral (payload::Word32)))
-  liftIO . print $ "Read " ++ show bs
+--  liftIO . print $ "Read " ++ show bs
   let x = decodeStrict bs
-  liftIO . print $ "Read " ++ show x
+--  liftIO . print $ "Read " ++ show x
   return x
 
 writeBS :: (Binary a, MonadIO m, Show a, Eq a) => IO.Handle -> a -> m ()
 writeBS hout x = liftIO $ do
-  liftIO . putStrLn $ "writing " ++ show x
-  liftIO . putStrLn $ "on " ++ show hout
+--  liftIO . putStrLn $ "writing " ++ show x
+--  liftIO . putStrLn $ "on " ++ show hout
   let bs = encodeStrict x
   let payload = encodeStrict (fromIntegral (BS.length bs) :: Word32)
-  liftIO . putStrLn $ "payload size computed at " ++ show (BS.length bs)
-  liftIO . putStrLn $ "Write " ++ show bs
+--  liftIO . putStrLn $ "payload size computed at " ++ show (BS.length bs)
+--  liftIO . putStrLn $ "Write " ++ show bs
   BS.hPut hout (payload `BS.append` bs)
   IO.hFlush hout
 
