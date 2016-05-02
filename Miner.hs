@@ -16,7 +16,7 @@ import Data.Picture
 import Philed.Data.NNeg
 import Philed.Data.Vector
 
-import Remote.TextTile
+import Data.TextTile
 
 fromJust :: Maybe a -> a
 fromJust (Just x) = x
@@ -36,6 +36,15 @@ messageDelayed str = do
               >> sleep
               >> update
             | (g,n) <- zip glyphs [0..] ]
+
+scroll :: MonadIO m => String -> Command tile m ()
+scroll str = mapM (newGlyph Red) str >>= \gs -> mapM_ (scroll' gs) [0..20]
+  where scroll' gs n = do
+          remove (fromNum' n) (fromNum' 1)
+          sequence [ remove (fromNum' m) (fromNum' 1)
+                     >> lay g (fromNum' m) (fromNum' 1) | (g,m) <- zip gs [n+1..] ]
+          sleep
+          update
 
 clearN :: MonadIO m => Integer -> Command tile m ()
 clearN n = do

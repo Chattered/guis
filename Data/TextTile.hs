@@ -3,8 +3,9 @@
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
-module Data.TextTile (Command, newGlyph, lay, remove, update, sleep, serveText
-                     ,hoistCommand, C, Response, textTileResponseCmd) where
+module Data.TextTile (Command, newGlyph, lay, remove, update, sleep, Env, withEnv
+                     ,hoistCommand, C, runC, runCmd, Response
+                     ,textTileResponseCmd) where
 
 import           Control.Concurrent (threadDelay)
 import           Control.Monad.Except
@@ -17,6 +18,13 @@ import           System.Environment (getEnv)
 import qualified Backend.SDLWrap as SDL
 import qualified Data.Picture as P
 import qualified Remote.Pipes as P (ResponseCmd(..))
+
+data Env = Env { w :: Word
+               , h :: Word
+               , eraser :: SDL.Texture
+               , fontFile :: FilePath
+               , fontSize :: Int
+               }
 
 data Cmd tile cmd = NewGlyph Char P.Colour (tile -> cmd)
                   | Lay tile (NNeg Integer) (NNeg Integer) cmd
@@ -77,23 +85,37 @@ split cmd = runFreeT cmd >>= s
           where f Awake = split cmd
                 f _     = error "BUG: Awake required"
 
-serveText
-  :: (MonadIO m, MonadError e m, SDL.FromSDLError e) =>
-     SDL.SDL e m (C SDL.Texture -> SDL.SDL e m (Maybe (Response SDL.Texture)))
-serveText = do
-    fontDir <- liftIO (getEnv "fonts")
-    let fontFile = (fontDir ++ "/share/fonts/truetype/DejaVuSansMono.ttf")
-    let ptSize = 14
-    dejavu <- SDL.loadFont fontFile ptSize
-    x <- SDL.loadString fontFile ptSize "X" (SDL.rgbaColour 0xFF 0xFF 0xFF 0xFF)
-    (w,h) <- SDL.textureDimensions x
-    eraser <- SDL.loadRect (w,h) (SDL.rgbaColour 0x0 0x0 0x0 0xFF)
-    return (runCmd w h eraser (fontFile,ptSize))
+
+withEnv :: (MonadIO m, MonadError e m, SDL.FromSDLError e) =>
+           (Env -> SDL.SDL e m r) -> SDL.SDL e m r
+withEnv f = do
+  fontDir <- liftIO (getEnv "fonts")
+  let fontFile = (fontDir ++ "/share/fonts/truetype/DejaVuSansMono.ttf")
+  let ptSize = 14
+  dejavu <- SDL.loadFont fontFile ptSize
+  x <- SDL.loadString fontFile ptSize "X" (SDL.rgbaColour 0xFF 0xFF 0xFF 0xFF)
+  (w,h) <- SDL.textureDimensions x
+  eraser <- SDL.loadRect (w,h) (SDL.rgbaColour 0x0 0x0 0x0 0xFF)
+  f (Env w h eraser fontFile ptSize)
 
 runCmd :: (MonadIO m, MonadError e m, SDL.FromSDLError e) =>
-         Word -> Word -> SDL.Texture -> (FilePath, Int)
-         -> C SDL.Texture -> SDL.SDL e m (Maybe (Response SDL.Texture))
-runCmd w h eraser (fontFile, ptSize) cmd = case cmd of
+          Env -> Command SDL.Texture m a -> SDL.SDL e m a
+runCmd (Env w h eraser fontFile ptSize) = iterTM f . runCommand
+  where f (NewGlyph c col k) =
+          SDL.loadString fontFile ptSize [c] (SDL.ofColour col) >>= k
+        f (Lay tile m n cmd) =
+          SDL.render (P.Translate (vecOf m n) (P.Image tile)) *> cmd
+        f (Remove m n cmd) =
+          SDL.render (P.Translate (vecOf m n) (P.Image eraser)) *> cmd
+        f (Update cmd) = SDL.update *> cmd
+        f (Sleep cmd) = liftIO (threadDelay 500) *> cmd
+        vecOf m n =
+          ((fromIntegral . extract $ m) * fromIntegral w,
+           (fromIntegral . extract $ n) * fromIntegral h)
+
+runC :: (MonadIO m, MonadError e m, SDL.FromSDLError e) =>
+        Env -> C SDL.Texture -> SDL.SDL e m (Maybe (Response SDL.Texture))
+runC (Env w h eraser fontFile ptSize) cmd = case cmd of
   NewG c col   ->
     Just . Tile <$> SDL.loadString fontFile ptSize [c] (SDL.ofColour col)
   Lie tile m n -> SDL.render (P.Translate (vecOf m n) (P.Image tile))

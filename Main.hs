@@ -14,6 +14,8 @@ import System.Posix.Files
 import Backend.SDLWrap (clear, runSDL, Texture)
 import Data.TextTile
 
+import Miner
+
 import qualified Remote.Pipes as P
 import qualified Backend.SDLWrap as SDL
 
@@ -36,22 +38,26 @@ waitM cond = do
   unless c $ do liftIO Concurrent.yield
                 waitM cond
 
-main :: IO ()
-main = do
-  createNamedPipe "serverin"  (3 `shiftL` 7)
-  createNamedPipe "serverout" (3 `shiftL` 7)
-  runSDL (0,0) 640 480 $ do
-    clear
-    forever . h . runSafeT $ do
-      withFile "serverin" ReadMode $ \hin -> do
-        waitM (liftIO . hReady $ hin)
-        withFile "serverout" WriteMode $ \hout -> do
-          runEffect $ hoist liftBase $ P.runServer hin hout textServer
-          liftIO $ putStrLn "bye"
-  where h x = x `catch` (\e -> do liftIO . print $ (e::SomeException)
-                                  return ())
-        textServer cmds = join (((P.server $) <$> lift serveText) <*> pure cmds)
+-- main :: IO ()
+-- main = do
+--   createNamedPipe "serverin"  (3 `shiftL` 7)
+--   createNamedPipe "serverout" (3 `shiftL` 7)
+--   runSDL (0,0) 640 480 $ do
+--     clear
+--     forever . h . runSafeT $ do
+--       withFile "serverin" ReadMode $ \hin -> do
+--         waitM (liftIO . hReady $ hin)
+--         withFile "serverout" WriteMode $ \hout -> do
+--           runEffect $ hoist liftBase $ P.runServer hin hout textServer
+--           liftIO $ putStrLn "bye"
+--   where h x = x `catch` (\e -> do liftIO . print $ (e::SomeException)
+--                                   return ())
+--         textServer = P.server (withEnv . flip runC)
 
 textClient :: Monad m => Command tile m ()
               -> Client [C tile] (Maybe (Response tile)) m ()
 textClient = join . lift . fmap P.client . textTileResponseCmd
+
+main :: IO ()
+main = SDL.runSDL (0,0) 320 240
+       $ withEnv . flip runCmd $ scroll "Hello there with bells on the top"
